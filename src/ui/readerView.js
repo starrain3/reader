@@ -764,6 +764,9 @@ class ReaderViewController {
     if (this.statusChapterEl) this.statusChapterEl.textContent = titleText;
     if (this.slider) this.slider.value = index;
 
+    // 同步更新目錄抽屜的高亮項
+    this.updateDrawerActiveItem(index);
+
     // 儲存進度至資料庫
     this.currentBook.lastChapterIndex = index;
     this.currentBook.lastChapterTitle = chapMeta.title;
@@ -829,26 +832,63 @@ class ReaderViewController {
 
   openDrawer() {
     this.hideMenu();
+
+    // 1. 若有搜尋關鍵字殘留，開啟時重設以完整顯示全部章節
+    const searchInput = document.getElementById('drawer-search-input');
+    if (searchInput && searchInput.value) {
+      searchInput.value = '';
+      this.filterDrawerList('');
+    }
+
+    // 2. 確保當前正在閱讀的章節標記為 active
+    this.updateDrawerActiveItem(this.currentChapterIndex);
+
+    // 3. 展開抽屜
     this.drawerMask?.classList.add('show');
+
+    // 4. 直接定位到讀者正在閱讀的章節
     this.scrollToActiveDrawerItem();
+
+    // 5. 背景同步已下載章節的圖示狀態
+    this.updateDrawerCachedIcons();
   }
 
   closeDrawer() {
     this.drawerMask?.classList.remove('show');
   }
 
-  renderDrawer() {
+  async renderDrawer() {
     if (!this.currentBook || !this.currentBook.chapters || !this.drawerList) return;
 
     const chapters = this.currentBook.chapters;
+    let cachedSet = new Set();
+    try {
+      cachedSet = await getCachedChapterIndices(this.currentBook.id);
+    } catch (e) {
+      console.warn('獲取快取章節狀態失敗:', e);
+    }
+
+    const downloadSvg = `
+      <span class="drawer-cached-icon" title="已下載離線快取">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+      </span>
+    `;
+
     this.drawerList.innerHTML = chapters
       .map(
         (chap, idx) => `
         <div class="drawer-item ${idx === this.currentChapterIndex ? 'active' : ''}" data-idx="${idx}">
-          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-            ${convertToTraditional(chap.title, this.openccEnabled)}
-          </span>
-          <span style="font-size:11px; opacity:0.6;">#${idx + 1}</span>
+          <div class="drawer-item-title-wrap">
+            <span class="drawer-item-title">${convertToTraditional(chap.title, this.openccEnabled)}</span>
+          </div>
+          <div class="drawer-item-meta">
+            ${cachedSet.has(idx) ? downloadSvg : ''}
+            <span class="drawer-item-num">#${idx + 1}</span>
+          </div>
         </div>
       `
       )
@@ -863,13 +903,77 @@ class ReaderViewController {
     });
   }
 
+  updateDrawerActiveItem(targetIndex = this.currentChapterIndex) {
+    if (!this.drawerList) return;
+    const prevActive = this.drawerList.querySelector('.drawer-item.active');
+    if (prevActive) {
+      prevActive.classList.remove('active');
+    }
+    const currentItem = this.drawerList.querySelector(`.drawer-item[data-idx="${targetIndex}"]`);
+    if (currentItem) {
+      currentItem.classList.add('active');
+    }
+  }
+
+  async updateDrawerCachedIcons() {
+    if (!this.drawerList || !this.currentBook) return;
+    try {
+      const cachedSet = await getCachedChapterIndices(this.currentBook.id);
+      const downloadSvg = `
+        <span class="drawer-cached-icon" title="已下載離線快取">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </span>
+      `;
+      this.drawerList.querySelectorAll('.drawer-item').forEach((item) => {
+        const idx = parseInt(item.dataset.idx, 10);
+        const metaEl = item.querySelector('.drawer-item-meta');
+        let iconEl = item.querySelector('.drawer-cached-icon');
+        const isCached = cachedSet.has(idx);
+
+        if (isCached && !iconEl && metaEl) {
+          const temp = document.createElement('div');
+          temp.innerHTML = downloadSvg.trim();
+          metaEl.prepend(temp.firstElementChild);
+        } else if (!isCached && iconEl) {
+          iconEl.remove();
+        }
+      });
+    } catch (e) {
+      console.warn('同步目錄快取圖示失敗:', e);
+    }
+  }
+
   scrollToActiveDrawerItem() {
-    setTimeout(() => {
-      const activeEl = this.drawerList?.querySelector('.drawer-item.active');
-      if (activeEl) {
-        activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (!this.drawerList) return;
+
+    const doScroll = () => {
+      const activeEl =
+        this.drawerList.querySelector(`.drawer-item[data-idx="${this.currentChapterIndex}"]`) ||
+        this.drawerList.querySelector('.drawer-item.active');
+      if (!activeEl) return;
+
+      // 精確計算目標章節相對於 drawerList 頂部的位移並置中
+      const itemTop = activeEl.offsetTop - this.drawerList.offsetTop;
+      const targetScrollTop = itemTop - (this.drawerList.clientHeight / 2) + (activeEl.clientHeight / 2);
+      this.drawerList.scrollTop = Math.max(0, targetScrollTop);
+
+      // 相容性輔助調用
+      if (typeof activeEl.scrollIntoView === 'function') {
+        activeEl.scrollIntoView({ block: 'center', behavior: 'instant' });
       }
-    }, 100);
+    };
+
+    // 1. 立即同步定位（抽屜展開滑動時內部位置已正對當前章節）
+    doScroll();
+
+    // 2. 在渲染幀與抽屜滑入過渡動畫結束（320ms）時校準，防止 layout 尺寸變動影響
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 150);
+    setTimeout(doScroll, 320);
   }
 
   filterDrawerList(keyword) {
@@ -1112,6 +1216,7 @@ class ReaderViewController {
 
     if (statusText) statusText.textContent = `下載結束：成功 ${successCount} 章，失敗 ${failedCount} 章`;
     await this.updateCacheStats();
+    this.updateDrawerCachedIcons();
     showToast(`離線快取完成 (成功 ${successCount} 章)`);
 
     setTimeout(() => {

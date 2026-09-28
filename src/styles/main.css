@@ -873,12 +873,58 @@ body {
   cursor: pointer;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  transition: background-color 0.15s ease;
+}
+
+.drawer-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.drawer-item-title-wrap {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+.drawer-item-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drawer-item-num {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.drawer-cached-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 4px;
+  padding: 2px 4px;
 }
 
 .drawer-item.active {
   color: var(--primary-color);
   font-weight: 700;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(56, 189, 248, 0.14);
+  border-left: 3px solid var(--primary-color);
+  padding-left: 13px;
 }
 
 /* 語音朗讀懸浮條 (Floating TTS) */
