@@ -20,7 +20,7 @@
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
         </svg>
-        <span id="header-title-text">隨身書架</span>
+        <span id="header-title-text">Ku Reader</span>
       </div>
       <div style="font-size: 12px; color: var(--text-muted);" id="header-info">離線支援 · 繁簡轉換</div>
     </header>
@@ -303,10 +303,53 @@
           <button id="btn-next-chapter" class="btn-sm btn-secondary">下一章</button>
         </div>
 
+        <!-- 獨立文字排版設定面板 (Text Settings Sheet) -->
+        <div id="reader-text-panel" class="reader-popup-panel" style="display:none;">
+          <div class="panel-header">
+            <span style="font-size:14px; font-weight:700; display:flex; align-items:center; gap:6px;">
+              <span>🔤</span> 文字外觀設定
+            </span>
+            <button id="text-panel-btn-close" class="btn-sm btn-secondary" style="border:none; padding:4px 8px; cursor:pointer;" title="關閉">✕</button>
+          </div>
+
+          <!-- 字體大小調整 -->
+          <div class="panel-section">
+            <div class="panel-label-row">
+              <span>字體大小</span>
+              <span id="text-panel-font-size-val" style="color:var(--primary-color); font-weight:bold;">18px</span>
+            </div>
+            <div class="font-size-control-row">
+              <button id="btn-font-dec-panel" class="btn-sm btn-secondary" style="width:40px; height:36px; font-weight:bold; font-size:14px;">A-</button>
+              <input type="range" id="reader-font-size-slider" min="12" max="36" step="1" value="18" class="reader-slider" />
+              <button id="btn-font-inc-panel" class="btn-sm btn-secondary" style="width:40px; height:36px; font-weight:bold; font-size:14px;">A+</button>
+            </div>
+          </div>
+
+          <!-- 文字顏色調整 -->
+          <div class="panel-section">
+            <div class="panel-label-row">
+              <span>文字顏色</span>
+              <button id="btn-reset-text-color" class="btn-link-action">恢復主題預設</button>
+            </div>
+            <div class="text-color-palette" id="text-color-palette">
+              <div class="color-pill" data-color="" title="跟隨主題預設" style="background:linear-gradient(135deg, #1e293b 50%, #f1f5f9 50%); border:1px solid #475569;"></div>
+              <div class="color-pill" data-color="#111827" title="極夜黑" style="background:#111827;"></div>
+              <div class="color-pill" data-color="#374151" title="炭墨灰" style="background:#374151;"></div>
+              <div class="color-pill" data-color="#3b2d22" title="暖墨褐" style="background:#3b2d22;"></div>
+              <div class="color-pill" data-color="#14422b" title="竹青綠" style="background:#14422b;"></div>
+              <div class="color-pill" data-color="#f8fafc" title="月牙白" style="background:#f8fafc;"></div>
+              <div class="color-pill" data-color="#cbd5e1" title="銀霜灰" style="background:#cbd5e1;"></div>
+              <label class="color-pill color-custom-btn" title="自訂顏色" style="cursor:pointer;">
+                <span style="font-size:13px;">🎨</span>
+                <input type="color" id="reader-custom-color-input" style="opacity:0; position:absolute; width:1px; height:1px; pointer-events:none;" />
+              </label>
+            </div>
+          </div>
+        </div>
+
         <!-- 樣式與排版控制鈕 -->
         <div class="reader-control-grid">
-          <button id="btn-font-dec" class="control-btn"><span>A-</span><span>字體縮小</span></button>
-          <button id="btn-font-inc" class="control-btn"><span>A+</span><span>字體放大</span></button>
+          <button id="btn-text-settings" class="control-btn"><span>Aa</span><span>文字設定</span></button>
           <button id="btn-toggle-opencc" class="control-btn active"><span>繁 / 簡</span><span>繁體轉換</span></button>
           <button id="reader-btn-drawer-trigger" class="control-btn" onclick="document.getElementById('reader-btn-toc').click()"><span>📑</span><span>章節目錄</span></button>
         </div>

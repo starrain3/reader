@@ -19,6 +19,7 @@ class ReaderViewController {
     this.lineHeight = 1.8;
     this.theme = 'theme-parchment';
     this.openccEnabled = true;
+    this.textColor = null;
     this.sourcesMap = new Map();
 
     // DOM 元素引用
@@ -33,6 +34,11 @@ class ReaderViewController {
     this.statusChapterEl = null;
     this.ttsBar = null;
     this.downloadModal = null;
+    this.textPanel = null;
+    this.isTextPanelVisible = false;
+    this.fontSizeSlider = null;
+    this.fontSizeValEl = null;
+    this.customColorInput = null;
     this.isDownloading = false;
     this.cancelDownloadFlag = false;
 
@@ -57,12 +63,20 @@ class ReaderViewController {
     this.statusTimeEl = document.getElementById('status-current-time');
     this.ttsBar = document.getElementById('reader-tts-bar');
     this.downloadModal = document.getElementById('reader-download-modal');
+    this.textPanel = document.getElementById('reader-text-panel');
+    this.fontSizeSlider = document.getElementById('reader-font-size-slider');
+    this.fontSizeValEl = document.getElementById('text-panel-font-size-val');
+    this.customColorInput = document.getElementById('reader-custom-color-input');
 
     // 載入偏好設定
     this.fontSize = await getSetting('reader_font_size', 18);
     this.lineHeight = await getSetting('reader_line_height', 1.8);
     this.theme = await getSetting('reader_theme', 'theme-parchment');
     this.openccEnabled = await getSetting('reader_opencc', true);
+    this.textColor = await getSetting('reader_font_color', null);
+
+    if (this.fontSizeSlider) this.fontSizeSlider.value = this.fontSize;
+    if (this.fontSizeValEl) this.fontSizeValEl.textContent = `${this.fontSize}px`;
 
     this.applyTheme(this.theme);
     this.applyTypography();
@@ -159,12 +173,46 @@ class ReaderViewController {
       this.changeChapter(targetIdx);
     });
 
-    // 字體縮小 / 放大
-    document.getElementById('btn-font-dec')?.addEventListener('click', () => {
+    // 獨立文字設定面板開關按鈕
+    document.getElementById('btn-text-settings')?.addEventListener('click', () => {
+      this.toggleTextPanel();
+    });
+
+    // 關閉文字設定面板
+    document.getElementById('text-panel-btn-close')?.addEventListener('click', () => {
+      this.hideTextPanel();
+    });
+
+    // 文字面板內字體縮小 / 放大
+    document.getElementById('btn-font-dec-panel')?.addEventListener('click', () => {
       this.adjustFontSize(-2);
     });
-    document.getElementById('btn-font-inc')?.addEventListener('click', () => {
+    document.getElementById('btn-font-inc-panel')?.addEventListener('click', () => {
       this.adjustFontSize(2);
+    });
+
+    // 字體大小滑桿即時調節
+    this.fontSizeSlider?.addEventListener('input', (e) => {
+      this.setFontSize(parseInt(e.target.value, 10));
+    });
+
+    // 文字顏色色票點擊切換
+    document.querySelectorAll('.text-color-palette .color-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        if (pill.classList.contains('color-custom-btn')) return;
+        const color = pill.dataset.color || null;
+        this.setTextColor(color);
+      });
+    });
+
+    // 恢復主題預設文字顏色
+    document.getElementById('btn-reset-text-color')?.addEventListener('click', () => {
+      this.setTextColor(null);
+    });
+
+    // 自訂文字顏色
+    this.customColorInput?.addEventListener('input', (e) => {
+      this.setTextColor(e.target.value);
     });
 
     // 繁簡切換
@@ -241,25 +289,90 @@ class ReaderViewController {
       this.contentBox.style.fontSize = `${this.fontSize}px`;
       this.contentBox.style.lineHeight = `${this.lineHeight}`;
     }
+
+    if (this.viewEl) {
+      if (this.textColor) {
+        this.viewEl.style.setProperty('--reader-custom-color', this.textColor);
+      } else {
+        this.viewEl.style.removeProperty('--reader-custom-color');
+      }
+    }
+
+    this.updateColorPaletteUI();
+  }
+
+  setFontSize(size) {
+    this.fontSize = Math.max(12, Math.min(36, size));
+    saveSetting('reader_font_size', this.fontSize);
+    if (this.fontSizeSlider) this.fontSizeSlider.value = this.fontSize;
+    if (this.fontSizeValEl) this.fontSizeValEl.textContent = `${this.fontSize}px`;
+    this.applyTypography();
   }
 
   adjustFontSize(delta) {
-    this.fontSize = Math.max(14, Math.min(32, this.fontSize + delta));
-    saveSetting('reader_font_size', this.fontSize);
-    this.applyTypography();
+    this.setFontSize(this.fontSize + delta);
     showToast(`字體大小: ${this.fontSize}px`);
+  }
+
+  setTextColor(color) {
+    this.textColor = color;
+    saveSetting('reader_font_color', color);
+    this.applyTypography();
+    if (color) {
+      showToast('文字顏色已變更');
+    } else {
+      showToast('已恢復主題預設文字顏色');
+    }
+  }
+
+  toggleTextPanel() {
+    this.isTextPanelVisible = !this.isTextPanelVisible;
+    if (this.textPanel) {
+      this.textPanel.style.display = this.isTextPanelVisible ? 'block' : 'none';
+    }
+    document.getElementById('btn-text-settings')?.classList.toggle('active', this.isTextPanelVisible);
+  }
+
+  hideTextPanel() {
+    this.isTextPanelVisible = false;
+    if (this.textPanel) {
+      this.textPanel.style.display = 'none';
+    }
+    document.getElementById('btn-text-settings')?.classList.remove('active');
+  }
+
+  updateColorPaletteUI() {
+    const current = (this.textColor || '').toLowerCase();
+    let matched = false;
+
+    document.querySelectorAll('.text-color-palette .color-pill').forEach((pill) => {
+      if (pill.classList.contains('color-custom-btn')) return;
+      const color = (pill.dataset.color || '').toLowerCase();
+      const isSelected = color === current;
+      pill.classList.toggle('selected', isSelected);
+      if (isSelected) matched = true;
+    });
+
+    const customBtn = document.querySelector('.color-custom-btn');
+    if (customBtn) {
+      customBtn.classList.toggle('selected', Boolean(current && !matched));
+    }
   }
 
   toggleMenu() {
     this.isMenuVisible = !this.isMenuVisible;
     this.topBar?.classList.toggle('show', this.isMenuVisible);
     this.bottomBar?.classList.toggle('show', this.isMenuVisible);
+    if (!this.isMenuVisible) {
+      this.hideTextPanel();
+    }
   }
 
   hideMenu() {
     this.isMenuVisible = false;
     this.topBar?.classList.remove('show');
     this.bottomBar?.classList.remove('show');
+    this.hideTextPanel();
   }
 
   scrollPage(direction) {
