@@ -1,18 +1,32 @@
 {
+  "id": "./index.html",
   "name": "Ku Reader",
   "short_name": "Ku Reader",
   "description": "專為 Android 行動裝置打造的小說閱讀器，支援書源搜尋、離線快取、本地 TXT/EPUB 匯入與仿真翻頁",
-  "start_url": "/",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#121212",
-  "theme_color": "#1e1e1e",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

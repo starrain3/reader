@@ -1,16 +1,25 @@
-// Service Worker for 隨身小說閱讀器
-const CACHE_NAME = 'ku-reader-cache-v1';
+// Service Worker for 隨身小說閱讀器 (Ku Reader)
+const CACHE_NAME = 'ku-reader-cache-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon.svg'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // 容錯快取機制：逐一快取靜態資源，避免單個檔案異常導致 install 失敗
+      for (const asset of STATIC_ASSETS) {
+        try {
+          await cache.add(asset);
+        } catch (err) {
+          console.warn('[SW] 快取靜態資源警告:', asset, err);
+        }
+      }
     })
   );
   self.skipWaiting();
@@ -32,12 +41,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
+  // 僅處理 GET 請求
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Skip caching external proxy / scraping requests to avoid bloating SW cache
+  // 跳過外部代理及跨域書源請求，避免快取膨脹
   if (url.origin !== self.location.origin) {
     return;
   }
@@ -45,7 +54,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cache but update in background
+        // 快取優先，同時背景請求更新快取 (Stale-While-Revalidate)
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -67,8 +76,8 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       });
     }).catch(() => {
-      // Offline fallback
-      return caches.match('/index.html');
+      // 離線備用退路
+      return caches.match('./index.html') || caches.match('./');
     })
   );
 });

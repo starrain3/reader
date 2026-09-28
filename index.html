@@ -6,8 +6,9 @@
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>Ku Reader</title>
   <link rel="stylesheet" href="/src/styles/main.css" />
 </head>
@@ -136,13 +137,21 @@
 
         <!-- PWA 安裝指引 -->
         <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
-          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">📱 如何在 Android 手機上如同 App 使用？</h3>
-          <ol style="font-size:12px; color:var(--text-muted); line-height:1.7; padding-left:18px;">
-            <li>使用手機的 <strong>Chrome 瀏覽器</strong> 開啟本站網址。</li>
-            <li>點擊右上角的「<strong>⋮</strong>」選單按鈕。</li>
-            <li>點選「<strong>加到主畫面</strong>」或「<strong>安裝應用程式</strong>」。</li>
-            <li>閱讀器即會化身為獨立 App 圖示，享有原生全螢幕、離線閱讀與滑動翻頁！</li>
-          </ol>
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">📱 安裝為桌面 / 手機應用程式 (PWA)</h3>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:12px;">
+            安裝後享有全螢幕沉浸閱讀、離線快取與獨立桌面捷徑圖示！
+          </p>
+          <button id="btn-pwa-install" class="btn-sm btn-primary" style="width:100%; padding:10px 0; font-size:13px; font-weight:600; margin-bottom:12px; display:none;">
+            📲 立即安裝 Ku Reader 應用程式
+          </button>
+          <div id="pwa-install-manual-guide">
+            <div style="font-size:12px; color:#cbd5e1; font-weight:600; margin-bottom:6px;">手動安裝方式：</div>
+            <ol style="font-size:12px; color:var(--text-muted); line-height:1.7; padding-left:18px;">
+              <li>使用手機 <strong>Chrome 瀏覽器</strong> 或電腦 <strong>Chrome/Edge</strong>。</li>
+              <li>點擊網址列右側的「<strong>安裝</strong>」圖示，或右上角的「<strong>⋮</strong>」選單。</li>
+              <li>點選「<strong>加到主畫面</strong>」或「<strong>安裝應用程式</strong>」即可！</li>
+            </ol>
+          </div>
         </div>
       </div>
     </main>
@@ -455,11 +464,13 @@
 
   <script type="module" src="/src/main.js"></script>
   <script>
-    // 註冊 Service Worker
+    // 註冊 Service Worker (使用相對路徑適配子路徑部署)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-          console.warn('Service Worker 註冊失敗:', err);
+        navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
+          console.log('[SW] Service Worker 註冊成功，範圍:', reg.scope);
+        }).catch((err) => {
+          console.warn('[SW] Service Worker 註冊失敗:', err);
         });
       });
     }

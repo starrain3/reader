@@ -13,6 +13,8 @@ class SettingsViewController {
     this.apiKeyInput = null;
     this.testBtn = null;
     this.clearCacheBtn = null;
+    this.deferredPrompt = null;
+    this.installBtn = null;
   }
 
   async init() {
@@ -20,6 +22,7 @@ class SettingsViewController {
     this.apiKeyInput = document.getElementById('settings-api-key');
     this.testBtn = document.getElementById('btn-test-proxy');
     this.clearCacheBtn = document.getElementById('btn-clear-cache');
+    this.installBtn = document.getElementById('btn-pwa-install');
 
     const savedWorkerUrl = await getSetting('cf_worker_url', 'https://aged-night-c15f.jasonku50419.workers.dev/');
     const savedApiKey = await getSetting('cf_api_key', 'superku');
@@ -28,6 +31,7 @@ class SettingsViewController {
     if (this.apiKeyInput) this.apiKeyInput.value = savedApiKey;
 
     this.bindEvents();
+    this.initPwaInstall();
     this.updateStorageStats();
   }
 
@@ -108,6 +112,66 @@ export default {
       navigator.clipboard.writeText(code).then(() => {
         showToast('已複製 Cloudflare Worker 程式碼！');
       });
+    });
+  }
+
+  initPwaInstall() {
+    // 檢查是否已在獨立應用程式模式中運行
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const guideEl = document.getElementById('pwa-install-manual-guide');
+
+    if (isStandalone) {
+      if (this.installBtn) {
+        this.installBtn.style.display = 'block';
+        this.installBtn.disabled = true;
+        this.installBtn.textContent = '✓ 目前已在 Ku Reader 獨立應用程式中運行';
+        this.installBtn.classList.replace('btn-primary', 'btn-secondary');
+      }
+      if (guideEl) guideEl.style.display = 'none';
+      return;
+    }
+
+    // 監聽 PWA 安裝提示事件
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // 阻止預設迷你橫幅
+      e.preventDefault();
+      // 保存事件以便後續手動喚起
+      this.deferredPrompt = e;
+
+      if (this.installBtn) {
+        this.installBtn.style.display = 'block';
+        this.installBtn.disabled = false;
+        this.installBtn.textContent = '📲 立即安裝 Ku Reader 應用程式至主畫面';
+      }
+    });
+
+    // 綁定安裝按鈕點擊
+    this.installBtn?.addEventListener('click', async () => {
+      if (!this.deferredPrompt) {
+        showToast('請使用瀏覽器選單中的「加到主畫面」或「安裝應用程式」');
+        return;
+      }
+
+      this.deferredPrompt.prompt();
+      const choiceResult = await this.deferredPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        showToast('正在安裝 Ku Reader...');
+        if (this.installBtn) this.installBtn.style.display = 'none';
+      }
+      this.deferredPrompt = null;
+    });
+
+    // 監聽安裝完成事件
+    window.addEventListener('appinstalled', () => {
+      showToast('🎉 Ku Reader 安裝成功！');
+      if (this.installBtn) {
+        this.installBtn.style.display = 'block';
+        this.installBtn.disabled = true;
+        this.installBtn.textContent = '✓ 應用程式已成功安裝！';
+        this.installBtn.classList.replace('btn-primary', 'btn-secondary');
+      }
+      if (guideEl) guideEl.style.display = 'none';
+      this.deferredPrompt = null;
     });
   }
 
