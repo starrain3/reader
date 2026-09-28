@@ -42,6 +42,10 @@ body {
   height: 100%;
   overflow: hidden;
   position: relative;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
 }
 
 /* 視圖切換容器 */
@@ -86,6 +90,8 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
+  max-width: 600px;
+  margin: 0 auto;
   height: calc(var(--bottom-nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   background: rgba(30, 41, 59, 0.95);
@@ -204,7 +210,7 @@ body {
 .fab-container {
   position: fixed;
   bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 20px);
-  right: 20px;
+  right: calc(max(20px, (100vw - 600px) / 2 + 20px));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -365,12 +371,15 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
+  max-width: 600px;
+  margin: 0 auto;
   z-index: 100;
   background: #f7f7f7;
   color: #333;
   display: none;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
 }
 
 #view-reader.active {
