@@ -6,9 +6,27 @@
 import { fetchText } from './network.js';
 import { getAllSources, saveSource } from '../db/index.js';
 import { DEFAULT_BOOK_SOURCES } from './defaultSources.js';
+import GBK from 'fast-gbk';
 
 /**
- * 初始化預設書源至 IndexedDB
+ * 輔助：依書源編碼需求對關鍵字進行網址百分比編碼
+ */
+export function encodeKeyword(keyword, charset = 'utf-8') {
+  if (charset && (charset.toLowerCase() === 'gbk' || charset.toLowerCase() === 'gb2312')) {
+    try {
+      const bytes = GBK.encode(keyword);
+      return Array.from(bytes)
+        .map((b) => '%' + b.toString(16).toUpperCase().padStart(2, '0'))
+        .join('');
+    } catch (e) {
+      console.warn('GBK 編碼轉換失敗，退回 UTF-8:', e);
+    }
+  }
+  return encodeURIComponent(keyword);
+}
+
+/**
+ * 初始化預設書源至 IndexedDB (具備版本更新與既有規則同步機制)
  */
 export async function initDefaultSources() {
   const existing = await getAllSources();
@@ -18,6 +36,28 @@ export async function initDefaultSources() {
     }
     return DEFAULT_BOOK_SOURCES;
   }
+
+  // 自動同步預設書源的新增與修復規則
+  for (const defSource of DEFAULT_BOOK_SOURCES) {
+    const matchIndex = existing.findIndex((s) => s.id === defSource.id);
+    if (matchIndex === -1) {
+      await saveSource(defSource);
+      existing.push(defSource);
+    } else {
+      const updated = { ...existing[matchIndex], ...defSource };
+      await saveSource(updated);
+      existing[matchIndex] = updated;
+    }
+  }
+
+  // 停用已知失效的舊預設書源 (如 biqu5200, shuba69)
+  for (const old of existing) {
+    if (['biqu5200', 'shuba69'].includes(old.id)) {
+      old.enabled = false;
+      await saveSource(old);
+    }
+  }
+
   return existing;
 }
 
@@ -53,12 +93,14 @@ export async function searchBooks(keyword, specificSourceId = null) {
   // 平行發起搜尋請求
   const promises = targetSources.map(async (source) => {
     try {
-      const searchUrl = source.searchUrl.replace('{keyword}', encodeURIComponent(keyword));
+      const encodedKw = encodeKeyword(keyword, source.charset || 'utf-8');
+      const searchUrl = source.searchUrl.replace('{keyword}', encodedKw);
       const html = await fetchText(searchUrl, {}, source.charset || 'auto');
       
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
 
+      // 1. 常規列表搜尋結果解析
       const items = doc.querySelectorAll(source.searchListSelector);
       items.forEach((item) => {
         const titleEl = source.titleSelector ? item.querySelector(source.titleSelector) : item;
@@ -88,6 +130,27 @@ export async function searchBooks(keyword, specificSourceId = null) {
           });
         }
       });
+
+      // 2. 特殊情況：若搜尋結果精確命中跳轉至小說書籍詳情頁 (如飄天文學/杰奇系統)
+      if (items.length === 0 && doc.querySelector('h1')) {
+        const h1 = doc.querySelector('h1').textContent.trim();
+        if (h1 && (h1.includes(keyword) || keyword.includes(h1))) {
+          const detailCoverEl = source.detailCoverSelector ? doc.querySelector(source.detailCoverSelector) : null;
+          const cover = detailCoverEl ? resolveUrl(detailCoverEl.getAttribute('src') || detailCoverEl.getAttribute('data-src'), source.baseUrl) : '';
+          
+          results.push({
+            id: `${source.id}_${btoa(encodeURIComponent(searchUrl)).substring(0, 16)}`,
+            title: h1,
+            author: '熱門作者',
+            cover,
+            intro: '點擊查看小說章節目錄與閱讀',
+            sourceId: source.id,
+            sourceName: source.name,
+            bookUrl: searchUrl,
+            charset: source.charset || 'auto'
+          });
+        }
+      }
     } catch (err) {
       console.warn(`[書源 ${source.name}] 搜尋出錯:`, err.message);
     }
@@ -115,7 +178,26 @@ export async function getBookDetailAndChapters(bookUrl, source) {
   const latestChapter = latestEl ? latestEl.textContent.trim() : '';
 
   // 解析章節列表
-  const chapterEls = doc.querySelectorAll(source.chapterListSelector);
+  let chapterEls = doc.querySelectorAll(source.chapterListSelector);
+
+  // 如果在詳情頁未直接找到章節列表，自動尋找「點擊閱讀」或目錄分頁連結
+  if (chapterEls.length === 0) {
+    const catalogLinkEl = doc.querySelector('a[title*="点击阅读"], a[title*="點擊閱讀"], a[href*="/html/"]');
+    if (catalogLinkEl) {
+      const catalogUrl = resolveUrl(catalogLinkEl.getAttribute('href'), bookUrl);
+      if (catalogUrl && catalogUrl !== bookUrl) {
+        try {
+          const catHtml = await fetchText(catalogUrl, {}, source.charset || 'auto');
+          const catDoc = new DOMParser().parseFromString(catHtml, 'text/html');
+          chapterEls = catDoc.querySelectorAll(source.chapterListSelector);
+          bookUrl = catalogUrl;
+        } catch (e) {
+          console.warn('載入章節目錄子頁面出錯:', e);
+        }
+      }
+    }
+  }
+
   const chapters = [];
   const seenUrls = new Set();
 

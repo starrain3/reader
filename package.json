@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "fast-gbk": "^0.0.1",
     "jszip": "^3.10.1",
     "opencc-js": "^1.0.5"
   },

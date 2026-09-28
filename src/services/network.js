@@ -25,8 +25,8 @@ export function isCapacitorNative() {
  * 取得當前配置的代理伺服器網址與金鑰
  */
 export async function getProxyConfig() {
-  const workerUrl = (await getSetting('cf_worker_url', '')).trim();
-  const apiKey = (await getSetting('cf_api_key', '')).trim();
+  const workerUrl = (await getSetting('cf_worker_url', 'https://aged-night-c15f.jasonku50419.workers.dev/')).trim();
+  const apiKey = (await getSetting('cf_api_key', 'superku')).trim();
   const legacyProxy = (await getSetting('custom_proxy', '')).trim();
 
   return {
@@ -167,6 +167,7 @@ function decodeBuffer(buffer, charset) {
   const previewText = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 2048));
 
   let detectedCharset = 'utf-8';
+  const match = previewText.match(/charset=["']?([a-zA-Z0-9_-]+)/i);
   if (match && match[1]) {
     detectedCharset = match[1].toLowerCase();
     if (detectedCharset === 'gb2312') detectedCharset = 'gbk';

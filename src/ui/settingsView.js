@@ -21,8 +21,8 @@ class SettingsViewController {
     this.testBtn = document.getElementById('btn-test-proxy');
     this.clearCacheBtn = document.getElementById('btn-clear-cache');
 
-    const savedWorkerUrl = await getSetting('cf_worker_url', '');
-    const savedApiKey = await getSetting('cf_api_key', '');
+    const savedWorkerUrl = await getSetting('cf_worker_url', 'https://aged-night-c15f.jasonku50419.workers.dev/');
+    const savedApiKey = await getSetting('cf_api_key', 'superku');
 
     if (this.workerUrlInput) this.workerUrlInput.value = savedWorkerUrl;
     if (this.apiKeyInput) this.apiKeyInput.value = savedApiKey;
