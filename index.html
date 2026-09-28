@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>隨身小說閱讀器</title>
+  <link rel="stylesheet" href="/src/styles/main.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 頂部通用標題列 (非閱讀狀態下顯示) -->
+    <header class="app-header">
+      <div class="app-title">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <span id="header-title-text">隨身書架</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted);" id="header-info">離線支援 · 繁簡轉換</div>
+    </header>
+
+    <!-- 1. 書架視圖 (Bookshelf View) -->
+    <main id="view-bookshelf" class="view-container active">
+      <div id="bookshelf-container"></div>
+
+      <!-- 浮動新增按鈕 (FAB) -->
+      <div class="fab-container">
+        <button id="fab-import-txt" class="fab" title="匯入 TXT 小說">
+          <span style="font-size: 11px; font-weight: bold;">TXT</span>
+        </button>
+        <button id="fab-import-epub" class="fab" title="匯入 EPUB 電子書" style="background:#8b5cf6;">
+          <span style="font-size: 11px; font-weight: bold;">EPUB</span>
+        </button>
+      </div>
+
+      <!-- 隱藏的檔案選擇輸入框 -->
+      <input type="file" id="file-input-txt" accept=".txt" style="display:none;" />
+      <input type="file" id="file-input-epub" accept=".epub" style="display:none;" />
+    </main>
+
+    <!-- 2. 發現 / 搜尋視圖 (Search View) -->
+    <main id="view-search" class="view-container">
+      <div class="search-header">
+        <div class="search-input-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="搜尋小說名稱、作者..." />
+        </div>
+        <select id="search-source-select" style="max-width:110px; background:#0f172a; color:#fff; border:1px solid var(--surface-border); border-radius:20px; padding:0 8px; font-size:12px; outline:none;"></select>
+        <button id="search-btn" class="search-btn">搜尋</button>
+      </div>
+
+      <div id="search-results-container">
+        <div style="text-align:center; padding: 60px 20px; color:var(--text-muted);">
+          <div style="font-size: 40px; margin-bottom: 12px;">🔍</div>
+          <p style="font-size:15px; color:#fff; margin-bottom:6px;">線上穿透搜尋小說</p>
+          <p style="font-size:12px;">支援筆趣閣、小說狂人、69書吧等多家站點直連搜尋與全文快取</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- 3. 書源管理視圖 (Sources View) -->
+    <main id="view-sources" class="view-container">
+      <div style="padding: 16px; display:flex; justify-content:space-between; align-items:center; background:var(--surface-color); border-bottom:1px solid var(--surface-border); position:sticky; top:0; z-index:10;">
+        <span style="font-size:14px; font-weight:600;">自訂與管理書源規則</span>
+        <div style="display:flex; gap:6px;">
+          <button id="btn-add-source" class="btn-sm btn-primary">＋新增</button>
+          <button id="btn-import-sources" class="btn-sm btn-secondary">匯入</button>
+          <button id="btn-export-sources" class="btn-sm btn-secondary">匯出</button>
+          <button id="btn-reset-sources" class="btn-sm btn-secondary" title="還原預設">重置</button>
+        </div>
+      </div>
+      <div id="sources-list-container" style="padding: 16px; display:flex; flex-direction:column; gap:12px;"></div>
+    </main>
+
+    <!-- 4. 設定視圖 (Settings View) -->
+    <main id="view-settings" class="view-container">
+      <div style="padding: 16px; display:flex; flex-direction:column; gap:20px;">
+        <!-- 網路跨域代理設定 -->
+        <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+            🌐 網路爬蟲代理設定 (CORS Proxy)
+          </h3>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:12px;">
+            手機瀏覽器在 PWA 模式下需要透過代理請求第三方小說網站。若打包成獨立 APK 則可免代理直連。
+          </p>
+          <div class="form-group">
+            <label class="form-label">代理伺服器網址前綴：</label>
+            <input type="text" id="settings-proxy-input" class="form-input" placeholder="例如: https://corsproxy.io/?url=" />
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button id="btn-save-proxy" class="btn-sm btn-primary" style="flex:1; padding:8px 0;">儲存設定</button>
+            <button id="btn-test-proxy" class="btn-sm btn-secondary" style="flex:1; padding:8px 0;">測試連線</button>
+          </div>
+        </div>
+
+        <!-- 免費 Cloudflare Worker 部署說明 -->
+        <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">⚡ 自建專屬 Cloudflare Worker (推薦)</h3>
+          <p style="font-size:12px; color:var(--text-muted); line-height:1.6; margin-bottom:12px;">
+            建立專屬於您的免費代理，每天 10 萬次免費請求，爬取速度更快且完全不塞車。
+          </p>
+          <button id="btn-copy-cf-code" class="btn-sm btn-secondary" style="width:100%; padding:8px 0; margin-bottom:8px;">
+            📋 複製 10 行 Worker 代理程式碼
+          </button>
+          <p style="font-size:11px; color:#94a3b8;">
+            至 Cloudflare Dashboard → Workers & Pages → Create Worker → 貼上程式碼部署後，將您的 Worker 網址加上 <code>?url=</code> 填入上方設定即可！
+          </p>
+        </div>
+
+        <!-- 本地儲存與快取管理 -->
+        <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">💾 本地快取與資料庫</h3>
+          <p id="settings-storage-stats" style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+            計算中...
+          </p>
+          <button id="btn-clear-cache" class="btn-sm btn-secondary" style="width:100%; padding:8px 0; color:#ef4444;">
+            清空所有離線章節內文 (釋放空間)
+          </button>
+        </div>
+
+        <!-- PWA 安裝指引 -->
+        <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">📱 如何在 Android 手機上如同 App 使用？</h3>
+          <ol style="font-size:12px; color:var(--text-muted); line-height:1.7; padding-left:18px;">
+            <li>使用手機的 <strong>Chrome 瀏覽器</strong> 開啟本站網址。</li>
+            <li>點擊右上角的「<strong>⋮</strong>」選單按鈕。</li>
+            <li>點選「<strong>加到主畫面</strong>」或「<strong>安裝應用程式</strong>」。</li>
+            <li>閱讀器即會化身為獨立 App 圖示，享有原生全螢幕、離線閱讀與滑動翻頁！</li>
+          </ol>
+        </div>
+      </div>
+    </main>
+
+    <!-- 底部導航欄 (Bottom Navigation Bar) -->
+    <nav class="bottom-nav">
+      <div class="nav-item active" data-view="bookshelf">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        <span>書架</span>
+      </div>
+      <div class="nav-item" data-view="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>發現</span>
+      </div>
+      <div class="nav-item" data-view="sources">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <span>書源</span>
+      </div>
+      <div class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>設定</span>
+      </div>
+    </nav>
+
+    <!-- ==========================================================================
+         5. 全螢幕獨立閱讀器視圖 (Full Screen Reader View)
+         ========================================================================== -->
+    <div id="view-reader" class="theme-parchment">
+      <!-- 頂部沉浸選單 -->
+      <div id="reader-top-bar" class="reader-top-bar">
+        <button id="reader-btn-back" class="btn-sm btn-secondary" style="background:none; border:none; color:#fff; font-size:18px; padding:6px 12px; cursor:pointer;">
+          ←
+        </button>
+        <div id="reader-bar-title" class="reader-bar-title">載入中...</div>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <button id="reader-btn-tts" style="background:none; border:none; color:#fff; cursor:pointer;" title="語音朗讀">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          </button>
+          <button id="reader-btn-toc" style="background:none; border:none; color:#fff; cursor:pointer;" title="目錄大綱">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 閱讀內文區域 -->
+      <div id="reader-content-box" class="reader-content-box"></div>
+
+      <!-- 觸控熱區感應層 (左右翻頁/滾動，中央喚出選單) -->
+      <div class="touch-zone-container">
+        <div id="touch-zone-prev" class="touch-zone prev"></div>
+        <div id="touch-zone-menu" class="touch-zone menu"></div>
+        <div id="touch-zone-next" class="touch-zone next"></div>
+      </div>
+
+      <!-- 閱讀器常駐狀態欄 (章節名稱與時間) -->
+      <div class="reader-status-bar">
+        <span id="status-chapter-name" style="max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+        <span id="status-current-time">12:00</span>
+      </div>
+
+      <!-- 底部沉浸選單 -->
+      <div id="reader-bottom-bar" class="reader-bottom-bar">
+        <!-- 章節滑桿 -->
+        <div class="reader-slider-row">
+          <button id="btn-prev-chapter" class="btn-sm btn-secondary">上一章</button>
+          <input type="range" id="reader-chapter-slider" class="reader-slider" min="0" max="100" value="0" />
+          <button id="btn-next-chapter" class="btn-sm btn-secondary">下一章</button>
+        </div>
+
+        <!-- 樣式與排版控制鈕 -->
+        <div class="reader-control-grid">
+          <button id="btn-font-dec" class="control-btn"><span>A-</span><span>字體縮小</span></button>
+          <button id="btn-font-inc" class="control-btn"><span>A+</span><span>字體放大</span></button>
+          <button id="btn-toggle-opencc" class="control-btn active"><span>繁 / 簡</span><span>繁體轉換</span></button>
+          <button id="reader-btn-drawer-trigger" class="control-btn" onclick="document.getElementById('reader-btn-toc').click()"><span>📑</span><span>章節目錄</span></button>
+        </div>
+
+        <!-- 主題配色選擇 -->
+        <div class="theme-palette">
+          <div class="theme-pill" data-theme="theme-white" style="background:#fafafa; color:#333;">純白</div>
+          <div class="theme-pill" data-theme="theme-green" style="background:#cce8cf; color:#1e3522;">護眼綠</div>
+          <div class="theme-pill selected" data-theme="theme-parchment" style="background:#f6eedb; color:#382e25;">羊皮紙</div>
+          <div class="theme-pill" data-theme="theme-dark" style="background:#1a1e24; color:#cbd5e1;">暗灰</div>
+          <div class="theme-pill" data-theme="theme-black" style="background:#000000; color:#888;">純黑</div>
+        </div>
+      </div>
+
+      <!-- 語音朗讀懸浮條 (TTS Bar) -->
+      <div id="reader-tts-bar" class="tts-bar" style="display:none;">
+        <span style="font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px;">
+          🔊 正在語音朗讀中
+        </span>
+        <div style="display:flex; gap:8px;">
+          <button id="tts-btn-play" class="btn-sm btn-primary">⏸ 暫停</button>
+          <button id="tts-btn-faster" class="btn-sm btn-secondary">⏩ 加速</button>
+          <button id="tts-btn-stop" class="btn-sm btn-secondary" style="color:#ef4444;">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 目錄抽屜 (TOC Drawer) -->
+    <div id="reader-drawer-mask" class="drawer-mask">
+      <div class="drawer-panel">
+        <div class="drawer-header">
+          <div style="font-size:16px; font-weight:700;">章節目錄</div>
+          <button id="drawer-btn-close" class="btn-sm btn-secondary">關閉</button>
+        </div>
+        <div style="padding: 10px 16px;">
+          <input type="text" id="drawer-search-input" class="form-input" placeholder="過濾/搜尋章節標題..." style="padding:6px 12px; font-size:12px;" />
+        </div>
+        <div id="reader-drawer-list" class="drawer-list"></div>
+      </div>
+    </div>
+
+    <!-- 自訂書源編輯彈窗 (Modal) -->
+    <div id="source-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content">
+        <h3 style="font-size:16px; font-weight:700; margin-bottom:12px;">編輯書源 JSON 規則</h3>
+        <textarea id="source-json-editor" class="form-textarea" style="height:220px; font-size:12px;"></textarea>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+          <button id="source-modal-cancel" class="btn-sm btn-secondary">取消</button>
+          <button id="source-modal-save" class="btn-sm btn-primary">儲存書源</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+  <script>
+    // 註冊 Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('Service Worker 註冊失敗:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

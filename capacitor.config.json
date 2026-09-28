@@ -1,0 +1,15 @@
+{
+  "appId": "com.kutools.reader",
+  "appName": "隨身小說閱讀器",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}
