@@ -1190,21 +1190,52 @@ class ReaderViewController {
       if (percentText) percentText.textContent = `${progressPercent}%`;
       if (progressBar) progressBar.style.width = `${progressPercent}%`;
 
-      try {
-        if (chapMeta.url && source) {
-          const content = await getChapterContent(chapMeta.url, source);
-          await saveChapter({
-            bookId: this.currentBook.id,
-            index: chapIndex,
-            title: chapMeta.title,
-            url: chapMeta.url,
-            content
-          });
-          successCount++;
+      const MAX_RETRIES = 3; // 失敗時最多自動重試 3 次（共 4 次嘗試機會）
+      let downloaded = false;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (this.cancelDownloadFlag) break;
+
+        // 若為重試 (attempt >= 1)，更新介面提示並進行漸進退避等待 (1s, 2s, 3s)
+        if (attempt > 0) {
+          if (statusText) {
+            statusText.textContent = `(${i + 1}/${totalToDownload}) ${chapMeta.title} (下載失敗，重試中 ${attempt}/${MAX_RETRIES})...`;
+          }
+
+          const backoffMs = attempt * 1000;
+          const waitStart = Date.now();
+          while (Date.now() - waitStart < backoffMs) {
+            if (this.cancelDownloadFlag) break;
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          if (this.cancelDownloadFlag) break;
         }
-      } catch (err) {
-        console.warn(`下載章節失敗 #${chapIndex}:`, err);
-        failedCount++;
+
+        try {
+          if (chapMeta.url && source) {
+            const content = await getChapterContent(chapMeta.url, source);
+            await saveChapter({
+              bookId: this.currentBook.id,
+              index: chapIndex,
+              title: chapMeta.title,
+              url: chapMeta.url,
+              content
+            });
+            successCount++;
+            downloaded = true;
+            break; // 下載成功，跳出重試迴圈
+          }
+        } catch (err) {
+          console.warn(`下載章節 #${chapIndex} 第 ${attempt + 1} 次嘗試失敗:`, err);
+          if (attempt === MAX_RETRIES) {
+            failedCount++;
+          }
+        }
+      }
+
+      if (this.cancelDownloadFlag) {
+        showToast('已取消後續章節下載，已下載內容已保留');
+        break;
       }
 
       // 適當防抖延遲 180ms，避免過於頻繁請求站點
@@ -1214,10 +1245,20 @@ class ReaderViewController {
     this.isDownloading = false;
     this.cancelDownloadFlag = false;
 
-    if (statusText) statusText.textContent = `下載結束：成功 ${successCount} 章，失敗 ${failedCount} 章`;
+    if (statusText) {
+      if (failedCount === 0) {
+        statusText.textContent = `下載結束：全數 ${successCount} 章快取成功！`;
+      } else {
+        statusText.textContent = `下載結束：成功 ${successCount} 章，失敗 ${failedCount} 章`;
+      }
+    }
     await this.updateCacheStats();
     this.updateDrawerCachedIcons();
-    showToast(`離線快取完成 (成功 ${successCount} 章)`);
+    if (failedCount === 0) {
+      showToast(`離線快取完成 (全數 ${successCount} 章成功)`);
+    } else {
+      showToast(`離線快取完成 (成功 ${successCount} 章，失敗 ${failedCount} 章)`);
+    }
 
     setTimeout(() => {
       if (progressBox && !this.isDownloading) {
