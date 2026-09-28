@@ -177,7 +177,8 @@ class ReaderViewController {
     saveSetting('reader_theme', themeName);
 
     if (this.viewEl) {
-      this.viewEl.className = `active ${themeName}`;
+      const isActive = this.currentBook !== null;
+      this.viewEl.className = `${isActive ? 'active' : ''} ${themeName}`.trim();
     }
 
     document.querySelectorAll('.theme-pill').forEach((pill) => {
@@ -281,6 +282,7 @@ class ReaderViewController {
   }
 
   closeReader() {
+    this.currentBook = null;
     tts.stop();
     this.hideTTS();
     this.hideMenu();
