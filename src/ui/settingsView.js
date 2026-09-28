@@ -4,53 +4,66 @@
  */
 
 import { getSetting, saveSetting, openDB, getAllBooks } from '../db/index.js';
-import { DEFAULT_PROXIES, fetchText } from '../services/network.js';
+import { testCloudflareWorker } from '../services/network.js';
 import { showToast } from './toast.js';
 
 class SettingsViewController {
   constructor() {
-    this.proxyInput = null;
+    this.workerUrlInput = null;
+    this.apiKeyInput = null;
     this.testBtn = null;
     this.clearCacheBtn = null;
   }
 
   async init() {
-    this.proxyInput = document.getElementById('settings-proxy-input');
+    this.workerUrlInput = document.getElementById('settings-worker-url');
+    this.apiKeyInput = document.getElementById('settings-api-key');
     this.testBtn = document.getElementById('btn-test-proxy');
     this.clearCacheBtn = document.getElementById('btn-clear-cache');
 
-    const currentProxy = await getSetting('custom_proxy', DEFAULT_PROXIES[0]);
-    if (this.proxyInput) {
-      this.proxyInput.value = currentProxy;
-    }
+    const savedWorkerUrl = await getSetting('cf_worker_url', '');
+    const savedApiKey = await getSetting('cf_api_key', '');
+
+    if (this.workerUrlInput) this.workerUrlInput.value = savedWorkerUrl;
+    if (this.apiKeyInput) this.apiKeyInput.value = savedApiKey;
 
     this.bindEvents();
     this.updateStorageStats();
   }
 
   bindEvents() {
-    // 儲存代理設定
+    // 儲存代理與金鑰設定
     document.getElementById('btn-save-proxy')?.addEventListener('click', async () => {
-      const val = this.proxyInput?.value.trim();
-      await saveSetting('custom_proxy', val);
-      showToast('已更新代理設定！');
+      const workerUrl = this.workerUrlInput?.value.trim() || '';
+      const apiKey = this.apiKeyInput?.value.trim() || '';
+
+      await saveSetting('cf_worker_url', workerUrl);
+      await saveSetting('cf_api_key', apiKey);
+      showToast('已安全儲存 Worker 設定與金鑰至本機！');
     });
 
-    // 測試代理連線
+    // 測試連線與金鑰
     this.testBtn?.addEventListener('click', async () => {
-      this.testBtn.textContent = '連線測試中...';
+      const workerUrl = this.workerUrlInput?.value.trim();
+      const apiKey = this.apiKeyInput?.value.trim();
+
+      if (!workerUrl) {
+        showToast('請先填寫 Cloudflare Worker 網址！');
+        return;
+      }
+
+      this.testBtn.textContent = '測試驗證中...';
       this.testBtn.disabled = true;
       const startTime = Date.now();
+
       try {
-        // 測試抓取輕量目標網址
-        const testUrl = 'https://httpbin.org/get';
-        const res = await fetchText(testUrl, { timeout: 8000 });
+        const result = await testCloudflareWorker(workerUrl, apiKey);
         const latency = Date.now() - startTime;
-        showToast(`✓ 連線正常！延遲: ${latency}ms`);
+        showToast(`✓ ${result.message || '連線成功！'} (${latency}ms)`);
       } catch (err) {
-        alert(`代理連線失敗: ${err.message}\n建議檢查 URL 前綴或使用 Cloudflare Worker。`);
+        alert(`連線測試失敗:\n${err.message}`);
       } finally {
-        this.testBtn.textContent = '測試連線';
+        this.testBtn.textContent = '測試連線與金鑰';
         this.testBtn.disabled = false;
       }
     });

@@ -84,12 +84,18 @@ class SearchViewController {
       this.resultsContainer.innerHTML = `
         <div style="text-align:center; padding: 40px 20px; color:#ef4444;">
           <p style="font-weight:bold; margin-bottom:8px;">搜尋失敗</p>
-          <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">${err.message}</p>
-          <button id="btn-retry-search" class="btn-sm btn-primary">重新搜尋</button>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px; line-height:1.5;">${err.message}</p>
+          <div style="display:flex; justify-content:center; gap:8px;">
+            <button id="btn-retry-search" class="btn-sm btn-primary">重新搜尋</button>
+            <button id="btn-goto-settings" class="btn-sm btn-secondary">前往「設定」輸入金鑰</button>
+          </div>
         </div>
       `;
       document.getElementById('btn-retry-search')?.addEventListener('click', () => {
         this.handleSearch();
+      });
+      document.getElementById('btn-goto-settings')?.addEventListener('click', () => {
+        document.querySelector('.nav-item[data-view="settings"]')?.click();
       });
     } finally {
       this.isSearching = false;

@@ -84,21 +84,28 @@
     <!-- 4. 設定視圖 (Settings View) -->
     <main id="view-settings" class="view-container">
       <div style="padding: 16px; display:flex; flex-direction:column; gap:20px;">
-        <!-- 網路跨域代理設定 -->
+        <!-- 專屬 Cloudflare Worker 與 API Key 設定 -->
         <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
-          <h3 style="font-size:15px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-            🌐 網路爬蟲代理設定 (CORS Proxy)
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            🌐 專屬 Cloudflare Worker 設定
           </h3>
           <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:12px;">
-            手機瀏覽器在 PWA 模式下需要透過代理請求第三方小說網站。若打包成獨立 APK 則可免代理直連。
+            設定專屬 Worker 代理與自訂安全金鑰，防止他人盜用配額。
           </p>
+          <div style="background:rgba(56, 189, 248, 0.1); border:1px solid rgba(56, 189, 248, 0.2); border-radius:8px; padding:8px 12px; font-size:11px; color:#38bdf8; margin-bottom:14px; line-height:1.5;">
+            🔒 <strong>安全保證</strong>：您的 Worker 網址與金鑰僅保存在本機手機的本地資料庫（IndexedDB）中，絕對不會外洩或上傳至 GitHub 公開儲存庫！
+          </div>
           <div class="form-group">
-            <label class="form-label">代理伺服器網址前綴：</label>
-            <input type="text" id="settings-proxy-input" class="form-input" placeholder="例如: https://corsproxy.io/?url=" />
+            <label class="form-label">Cloudflare Worker 網址：</label>
+            <input type="text" id="settings-worker-url" class="form-input" placeholder="例如: https://novel-proxy.yourname.workers.dev" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">安全通關金鑰 (API Key / Token)：</label>
+            <input type="password" id="settings-api-key" class="form-input" placeholder="您在 Worker 中設定的自訂密碼" />
           </div>
           <div style="display:flex; gap:10px;">
             <button id="btn-save-proxy" class="btn-sm btn-primary" style="flex:1; padding:8px 0;">儲存設定</button>
-            <button id="btn-test-proxy" class="btn-sm btn-secondary" style="flex:1; padding:8px 0;">測試連線</button>
+            <button id="btn-test-proxy" class="btn-sm btn-secondary" style="flex:1; padding:8px 0;">測試連線與金鑰</button>
           </div>
         </div>
 
