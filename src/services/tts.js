@@ -49,7 +49,11 @@ class TTSService {
 
     this.onParagraphChange = onParagraphChange;
     this.onFinished = onFinished;
-    this.paragraphs = text.split('\n\n').filter((p) => p.trim().length > 0);
+    this.paragraphs = text
+      .replace(/\r\n/g, '\n')
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
     this.currentIndex = 0;
     this.isPlaying = true;
     this.isPaused = false;

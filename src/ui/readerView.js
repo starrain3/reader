@@ -61,20 +61,23 @@ class ReaderViewController {
   }
 
   bindEvents() {
-    // 觸控熱區操作 (左側上一頁/滾動，右側下一頁/滾動，中央喚出/收合選單)
-    document.getElementById('touch-zone-prev')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.scrollPage(-1);
-    });
+    // 智能內容區點擊判定：左右 25% 翻頁，中間 50% 選單，自動排除按鈕點擊與文字選取
+    this.contentBox?.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input, select')) return;
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim().length > 0) return;
 
-    document.getElementById('touch-zone-next')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.scrollPage(1);
-    });
+      const rect = this.contentBox.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const width = rect.width;
 
-    document.getElementById('touch-zone-menu')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleMenu();
+      if (clickX < width * 0.25) {
+        this.scrollPage(-1);
+      } else if (clickX > width * 0.75) {
+        this.scrollPage(1);
+      } else {
+        this.toggleMenu();
+      }
     });
 
     // 頂部返回按鈕
@@ -372,7 +375,11 @@ class ReaderViewController {
     if (this.titleEl) this.titleEl.textContent = titleText;
     if (this.statusChapterEl) this.statusChapterEl.textContent = titleText;
 
-    const paragraphs = contentText.split('\n\n').filter((p) => p.trim().length > 0);
+    const paragraphs = contentText
+      .replace(/\r\n/g, '\n')
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
     const html = `
       <div class="reader-chapter-title">${titleText}</div>
       <div class="reader-paragraphs">
