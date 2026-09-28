@@ -26,16 +26,13 @@
 
 body {
   font-family: var(--font-family);
-  background-color: #0b0f19;
+  background-color: var(--bg-color);
   color: var(--text-main);
   overflow-x: hidden;
   height: 100vh;
   height: 100dvh;
   display: flex;
-  justify-content: center;
-  align-items: stretch;
-  margin: 0;
-  padding: 0;
+  flex-direction: column;
 }
 
 #app {
@@ -43,10 +40,6 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 100%;
-  max-width: 520px;
-  background-color: var(--bg-color);
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
   overflow: hidden;
   position: relative;
 }
@@ -89,7 +82,7 @@ body {
 
 /* 底部導航欄 (Bottom Navigation Bar) */
 .bottom-nav {
-  position: absolute;
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
@@ -209,7 +202,7 @@ body {
 
 /* 浮動操作按鈕 (FAB) */
 .fab-container {
-  position: absolute;
+  position: fixed;
   bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 20px);
   right: 20px;
   display: flex;
@@ -367,7 +360,7 @@ body {
    全螢幕閱讀器 (Full Screen Reader)
    ========================================================================== */
 #view-reader {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -415,8 +408,8 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 64px);
-  line-height: 1.85;
+  padding: calc(var(--safe-top) + 24px) 20px calc(var(--safe-bottom) + 32px);
+  line-height: 1.8;
   font-size: 18px;
   letter-spacing: 0.5px;
   position: relative;
@@ -424,7 +417,7 @@ body {
 }
 
 .reader-chapter-title {
-  font-size: 1.35em;
+  font-size: 1.3em;
   font-weight: 700;
   margin-bottom: 24px;
   padding-bottom: 12px;
@@ -432,18 +425,38 @@ body {
 }
 
 .reader-paragraph {
-  margin-bottom: 1.25em;
+  margin-bottom: 1.2em;
   text-indent: 2em;
-  text-align: justify;
-  text-justify: inter-ideograph;
-  word-break: normal;
-  overflow-wrap: break-word;
-  line-break: strict;
+  word-break: break-all;
 }
 
-/* 觸控手勢感應區域 (改由 readerView 內容區委派判定，隱藏覆蓋層以開放文字選取) */
+/* 觸控手勢感應區域 (Touch Zones) */
 .touch-zone-container {
-  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.touch-zone {
+  pointer-events: auto;
+  height: 100%;
+}
+
+.touch-zone.prev {
+  width: 25%;
+}
+
+.touch-zone.menu {
+  width: 50%;
+}
+
+.touch-zone.next {
+  width: 25%;
 }
 
 /* 頂部沉浸選單 */
@@ -581,7 +594,7 @@ body {
 
 /* 目錄抽屜 (TOC Drawer) */
 .drawer-mask {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -600,7 +613,7 @@ body {
 }
 
 .drawer-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
@@ -650,7 +663,7 @@ body {
 
 /* 語音朗讀懸浮條 (Floating TTS) */
 .tts-bar {
-  position: absolute;
+  position: fixed;
   top: calc(16px + var(--safe-top));
   left: 16px;
   right: 16px;
@@ -670,7 +683,7 @@ body {
 
 /* 彈窗樣式 (Modal) */
 .modal-overlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
