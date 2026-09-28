@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -14,7 +17,16 @@ jobs:
       - name: 檢出程式碼
         uses: actions/checkout@v4
 
-      - name: 設定 Node.js 環境
+      - name: 設定 Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: 設定 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 設定 Node.js 20 環境
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -23,9 +35,9 @@ jobs:
       - name: 安裝專案依賴
         run: npm ci
 
-      - name: 安裝 Capacitor 依賴
+      - name: 安裝 Capacitor 依賴 (鎖定相容版本)
         run: |
-          npm install --save-dev @capacitor/cli @capacitor/core @capacitor/android
+          npm install --save-dev @capacitor/cli@^6.0.0 @capacitor/core@^6.0.0 @capacitor/android@^6.0.0
 
       - name: 建置 Web 應用 (Vite build)
         run: npm run build
@@ -35,20 +47,15 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      - name: 設定 Java JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
       - name: 編譯 Android APK (Debug 版本)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: 上傳 APK 至 GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ku-novel-reader-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
