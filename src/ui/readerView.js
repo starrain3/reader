@@ -17,6 +17,7 @@ class ReaderViewController {
     this.isMenuVisible = false;
     this.fontSize = 18;
     this.lineHeight = 1.8;
+    this.fontWeight = '500';
     this.theme = 'theme-parchment';
     this.openccEnabled = true;
     this.textColor = null;
@@ -71,6 +72,7 @@ class ReaderViewController {
     // 載入偏好設定
     this.fontSize = await getSetting('reader_font_size', 18);
     this.lineHeight = await getSetting('reader_line_height', 1.8);
+    this.fontWeight = await getSetting('reader_font_weight', '500');
     this.theme = await getSetting('reader_theme', 'theme-parchment');
     this.openccEnabled = await getSetting('reader_opencc', true);
     this.textColor = await getSetting('reader_font_color', null);
@@ -196,6 +198,14 @@ class ReaderViewController {
       this.setFontSize(parseInt(e.target.value, 10));
     });
 
+    // 字體粗細 (Bold) 切換
+    document.querySelectorAll('.font-weight-group .weight-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const weight = pill.dataset.weight || '500';
+        this.setFontWeight(weight);
+      });
+    });
+
     // 文字顏色色票點擊切換
     document.querySelectorAll('.text-color-palette .color-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
@@ -288,6 +298,7 @@ class ReaderViewController {
     if (this.contentBox) {
       this.contentBox.style.fontSize = `${this.fontSize}px`;
       this.contentBox.style.lineHeight = `${this.lineHeight}`;
+      this.contentBox.style.setProperty('--reader-font-weight', this.fontWeight);
     }
 
     if (this.viewEl) {
@@ -299,6 +310,7 @@ class ReaderViewController {
     }
 
     this.updateColorPaletteUI();
+    this.updateFontWeightUI();
   }
 
   setFontSize(size) {
@@ -312,6 +324,20 @@ class ReaderViewController {
   adjustFontSize(delta) {
     this.setFontSize(this.fontSize + delta);
     showToast(`字體大小: ${this.fontSize}px`);
+  }
+
+  setFontWeight(weight) {
+    this.fontWeight = weight;
+    saveSetting('reader_font_weight', weight);
+    this.applyTypography();
+    const labelMap = { '400': '標準 (Normal)', '500': '適中 (Medium)', '700': '加粗 (Bold)' };
+    showToast(`字體粗細: ${labelMap[weight] || weight}`);
+  }
+
+  updateFontWeightUI() {
+    document.querySelectorAll('.font-weight-group .weight-pill').forEach((pill) => {
+      pill.classList.toggle('selected', pill.dataset.weight === String(this.fontWeight));
+    });
   }
 
   setTextColor(color) {
