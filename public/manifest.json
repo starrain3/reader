@@ -1,6 +1,6 @@
 {
-  "name": "隨身小說閱讀器",
-  "short_name": "隨身閱讀",
+  "name": "Ku Reader",
+  "short_name": "Ku Reader",
   "description": "專為 Android 行動裝置打造的小說閱讀器，支援書源搜尋、離線快取、本地 TXT/EPUB 匯入與仿真翻頁",
   "start_url": "/",
   "display": "standalone",
@@ -9,10 +9,10 @@
   "theme_color": "#1e1e1e",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
