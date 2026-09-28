@@ -27,7 +27,9 @@ export const DEFAULT_BOOK_SOURCES = [
     // 內文規則
     contentSelector: '.content',
     filterRegex: '(請記住本書首發域名|小說狂人|轉載請註明出處|czbooks\\.net)'
-  },
+  }
+  /*
+  ,
   {
     id: 'piaotia',
     name: '飄天文學 (Piaotia)',
@@ -36,20 +38,21 @@ export const DEFAULT_BOOK_SOURCES = [
     charset: 'gbk',
     searchUrl: 'https://www.piaotia.com/modules/article/search.php?searchkey={keyword}',
     searchListSelector: 'table.grid tr:not(:first-child)',
-    titleSelector: 'td:nth-child(1) a',
+    titleSelector: 'td:nth-child(1) a[href*="bookinfo"]',
     authorSelector: 'td:nth-child(3)',
-    bookUrlSelector: 'td:nth-child(1) a',
+    bookUrlSelector: 'td:nth-child(1) a[href*="bookinfo"]',
     coverSelector: '',
     introSelector: '',
     // 書籍詳情與目錄規則
     detailCoverSelector: 'img[src*="files/article/image"]',
     detailIntroSelector: 'table td[colspan="4"] + tr',
     detailLatestChapterSelector: '.hottext + a',
-    chapterListSelector: '.centent a, ul li a',
+    chapterListSelector: '.centent a',
     chapterTitleSelector: '',
     chapterUrlSelector: '',
     // 內文規則
-    contentSelector: '#content',
+    contentSelector: '#content, .content, .read_content',
     filterRegex: '(飄天文學|www\\.piaotia\\.com|最新章節！|請收藏本站|最快更新|天才一秒記住本站地址)'
   }
+  */
 ];

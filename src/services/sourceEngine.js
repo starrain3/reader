@@ -100,7 +100,53 @@ export async function searchBooks(keyword, specificSourceId = null) {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
 
-      // 1. 常規列表搜尋結果解析
+      // 1. 特殊情況先行判定：若搜尋結果精確命中跳轉至小說書籍詳情頁 (如飄天文學/杰奇系統 302 跳轉)
+      const h1El = doc.querySelector('h1');
+      const hasBookDetailMarkers = doc.querySelector('a[title*="点击阅读"], a[title*="點擊閱讀"], a[href*="/html/"]') ||
+                                   html.includes('点击阅读') || html.includes('點擊閱讀') || 
+                                   html.includes('最新章节') || html.includes('最新章節');
+
+      if (h1El && hasBookDetailMarkers) {
+        const h1 = h1El.textContent.trim();
+        // 取作者：優先從頁面正文中配對 "作者：" 或 meta author
+        let author = '熱門作者';
+        const authorMeta = doc.querySelector('meta[name="author"]');
+        if (authorMeta && authorMeta.getAttribute('content')) {
+          author = authorMeta.getAttribute('content').trim();
+        } else {
+          const authorMatch = html.match(/作(?:\s|&nbsp;)*者[：:](?:\s|&nbsp;)*([^\s<]+)/i);
+          if (authorMatch) author = authorMatch[1].trim();
+        }
+
+        // 取封面
+        const detailCoverEl = source.detailCoverSelector ? doc.querySelector(source.detailCoverSelector) : null;
+        const cover = detailCoverEl ? resolveUrl(detailCoverEl.getAttribute('src') || detailCoverEl.getAttribute('data-src'), source.baseUrl) : '';
+
+        // 取簡介
+        let intro = '點擊查看小說章節目錄與閱讀';
+        const introMatch = html.match(/内容简介[：:]\s*<\/span>\s*<br\s*[\/]?>([\s\S]*?)<br\s*[\/]?>/i);
+        if (introMatch) {
+          intro = introMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+        } else if (source.detailIntroSelector) {
+          const introEl = doc.querySelector(source.detailIntroSelector);
+          if (introEl) intro = introEl.textContent.trim();
+        }
+
+        results.push({
+          id: `${source.id}_${btoa(encodeURIComponent(searchUrl)).substring(0, 16)}`,
+          title: h1,
+          author,
+          cover,
+          intro,
+          sourceId: source.id,
+          sourceName: source.name,
+          bookUrl: searchUrl,
+          charset: source.charset || 'auto'
+        });
+        return; // 已精確命中單本小說詳情，不需繼續跑下方列表解析
+      }
+
+      // 2. 常規列表搜尋結果解析
       const items = doc.querySelectorAll(source.searchListSelector);
       items.forEach((item) => {
         const titleEl = source.titleSelector ? item.querySelector(source.titleSelector) : item;
@@ -116,7 +162,19 @@ export async function searchBooks(keyword, specificSourceId = null) {
         const cover = coverEl ? resolveUrl(coverEl.getAttribute('src') || coverEl.getAttribute('data-src'), source.baseUrl) : '';
         const intro = introEl ? introEl.textContent.trim() : '';
 
-        if (title && bookUrl) {
+        // 嚴格過濾非書籍連結（例如評論、書評、投票、推花等）
+        const isInvalidUrl = !bookUrl || 
+          bookUrl.includes('review') || 
+          bookUrl.includes('comment') || 
+          bookUrl.includes('uservote') || 
+          bookUrl.includes('flower') ||
+          bookUrl.includes('addbookcase') ||
+          title.includes('书评') ||
+          title.includes('書評') ||
+          title === '评论' ||
+          title === '評論';
+
+        if (title && bookUrl && !isInvalidUrl) {
           results.push({
             id: `${source.id}_${btoa(encodeURIComponent(bookUrl)).substring(0, 16)}`,
             title,
@@ -130,27 +188,6 @@ export async function searchBooks(keyword, specificSourceId = null) {
           });
         }
       });
-
-      // 2. 特殊情況：若搜尋結果精確命中跳轉至小說書籍詳情頁 (如飄天文學/杰奇系統)
-      if (items.length === 0 && doc.querySelector('h1')) {
-        const h1 = doc.querySelector('h1').textContent.trim();
-        if (h1 && (h1.includes(keyword) || keyword.includes(h1))) {
-          const detailCoverEl = source.detailCoverSelector ? doc.querySelector(source.detailCoverSelector) : null;
-          const cover = detailCoverEl ? resolveUrl(detailCoverEl.getAttribute('src') || detailCoverEl.getAttribute('data-src'), source.baseUrl) : '';
-          
-          results.push({
-            id: `${source.id}_${btoa(encodeURIComponent(searchUrl)).substring(0, 16)}`,
-            title: h1,
-            author: '熱門作者',
-            cover,
-            intro: '點擊查看小說章節目錄與閱讀',
-            sourceId: source.id,
-            sourceName: source.name,
-            bookUrl: searchUrl,
-            charset: source.charset || 'auto'
-          });
-        }
-      }
     } catch (err) {
       console.warn(`[書源 ${source.name}] 搜尋出錯:`, err.message);
     }
@@ -180,20 +217,21 @@ export async function getBookDetailAndChapters(bookUrl, source) {
   // 解析章節列表
   let chapterEls = doc.querySelectorAll(source.chapterListSelector);
 
-  // 如果在詳情頁未直接找到章節列表，自動尋找「點擊閱讀」或目錄分頁連結
-  if (chapterEls.length === 0) {
-    const catalogLinkEl = doc.querySelector('a[title*="点击阅读"], a[title*="點擊閱讀"], a[href*="/html/"]');
-    if (catalogLinkEl) {
-      const catalogUrl = resolveUrl(catalogLinkEl.getAttribute('href'), bookUrl);
-      if (catalogUrl && catalogUrl !== bookUrl) {
-        try {
-          const catHtml = await fetchText(catalogUrl, {}, source.charset || 'auto');
-          const catDoc = new DOMParser().parseFromString(catHtml, 'text/html');
-          chapterEls = catDoc.querySelectorAll(source.chapterListSelector);
+  // 如果在詳情頁未直接找到章節列表，或存在明確的完整目錄分頁連結 (如飄天文學等)
+  const catalogLinkEl = doc.querySelector('a[href*="index.html"], a[title*="点击阅读"], a[title*="點擊閱讀"], a[href*="/html/"]');
+  if (catalogLinkEl) {
+    const catalogUrl = resolveUrl(catalogLinkEl.getAttribute('href'), bookUrl);
+    if (catalogUrl && catalogUrl !== bookUrl && !bookUrl.includes('index.html')) {
+      try {
+        const catHtml = await fetchText(catalogUrl, {}, source.charset || 'auto');
+        const catDoc = new DOMParser().parseFromString(catHtml, 'text/html');
+        const subChapters = catDoc.querySelectorAll(source.chapterListSelector);
+        if (subChapters.length > 0) {
+          chapterEls = subChapters;
           bookUrl = catalogUrl;
-        } catch (e) {
-          console.warn('載入章節目錄子頁面出錯:', e);
         }
+      } catch (e) {
+        console.warn('載入章節目錄子頁面出錯:', e);
       }
     }
   }
@@ -232,18 +270,46 @@ export async function getChapterContent(chapterUrl, source) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
-  const contentEl = doc.querySelector(source.contentSelector);
-  if (!contentEl) {
-    throw new Error('未找到章節內文，可能章節選擇器失效或網頁結構變更');
+  let text = '';
+  const contentEl = source.contentSelector ? doc.querySelector(source.contentSelector) : null;
+
+  if (contentEl) {
+    // 移除常見的腳本與隱藏元素
+    contentEl.querySelectorAll('script, style, ins, .ads, iframe, header, footer').forEach((el) => el.remove());
+    // 替換 <br> 為換行
+    contentEl.innerHTML = contentEl.innerHTML.replace(/<br\s*[\/]?>/gi, '\n');
+    text = contentEl.textContent || '';
+  } else {
+    // 智慧備援：針對早期小說模板（如飄天文學正文夾在 .toplink 與 .bottomlink 之間，無 #content）
+    const topIdx = html.indexOf('class="toplink"') !== -1 ? html.indexOf('class="toplink"') : html.indexOf('class=toplink');
+    const bottomIdx = html.indexOf('class="bottomlink"') !== -1 ? html.indexOf('class="bottomlink"') : html.indexOf('class=bottomlink');
+
+    if (topIdx !== -1 && bottomIdx !== -1 && bottomIdx > topIdx) {
+      let section = html.substring(topIdx, bottomIdx);
+      section = section
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<table[\s\S]*?<\/table>/gi, '')
+        .replace(/<!--[\s\S]*?-->/gi, '')
+        .replace(/<div[^>]*class=["']?toplink["']?[\s\S]*?<\/div>/gi, '')
+        .replace(/<br\s*[\/]?>/gi, '\n')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+      text = section;
+    } else {
+      // 通用備援：從 body 尋找並清理
+      const bodyClone = doc.body ? doc.body.cloneNode(true) : null;
+      if (bodyClone) {
+        bodyClone.querySelectorAll('script, style, nav, header, footer, .toplink, .bottomlink, table, form').forEach((el) => el.remove());
+        bodyClone.innerHTML = bodyClone.innerHTML.replace(/<br\s*[\/]?>/gi, '\n');
+        text = bodyClone.textContent || '';
+      }
+    }
   }
 
-  // 移除常見的腳本與隱藏元素
-  contentEl.querySelectorAll('script, style, ins, .ads, iframe, header, footer').forEach((el) => el.remove());
-
-  // 替換 <br> 為換行
-  contentEl.innerHTML = contentEl.innerHTML.replace(/<br\s*[\/]?>/gi, '\n');
-
-  let text = contentEl.textContent || '';
+  if (!text || text.trim().length === 0) {
+    throw new Error('未找到章節內文，可能章節選擇器失效或網頁結構變更');
+  }
 
   // 過濾正則規則 (廣告與宣傳語)
   if (source.filterRegex) {

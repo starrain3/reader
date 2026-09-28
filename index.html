@@ -62,7 +62,7 @@
         <div style="text-align:center; padding: 60px 20px; color:var(--text-muted);">
           <div style="font-size: 40px; margin-bottom: 12px;">🔍</div>
           <p style="font-size:15px; color:#fff; margin-bottom:6px;">線上穿透搜尋小說</p>
-          <p style="font-size:12px;">支援筆趣閣、小說狂人、69書吧等多家站點直連搜尋與全文快取</p>
+          <p style="font-size:12px;">支援小說狂人站點直連搜尋、完整章節目錄與全文快取</p>
         </div>
       </div>
     </main>
@@ -168,6 +168,97 @@
     </nav>
 
     <!-- ==========================================================================
+         4.5 書籍詳情視圖 (Book Detail View)
+         ========================================================================== -->
+    <div id="view-book-detail" class="book-detail-view" style="display:none;">
+      <!-- 頂部導航列 -->
+      <div class="book-detail-header">
+        <button id="detail-btn-back" class="detail-header-btn" title="返回">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span>返回</span>
+        </button>
+        <div id="detail-bar-title" class="detail-header-title">書籍詳情</div>
+        <div style="width:40px;"></div>
+      </div>
+
+      <!-- 滾動內容區域 -->
+      <div class="book-detail-scroll">
+        <!-- 書籍主要資訊卡片 -->
+        <div class="book-detail-hero">
+          <div id="detail-cover" class="book-detail-cover"></div>
+          <div class="book-detail-meta">
+            <h2 id="detail-title" class="book-detail-title">載入中...</h2>
+            <div id="detail-author" class="book-detail-author">--</div>
+            <div class="book-detail-tags">
+              <span id="detail-source-tag" class="detail-tag source-tag">書源</span>
+              <span id="detail-status-tag" class="detail-tag status-tag">最新更新</span>
+            </div>
+            <div id="detail-latest-chapter" class="book-detail-latest">最新：載入中...</div>
+          </div>
+        </div>
+
+        <!-- 動作按鈕列 -->
+        <div class="book-detail-actions">
+          <button id="detail-btn-shelf" class="btn-detail-action btn-secondary">
+            ＋加入書架
+          </button>
+          <button id="detail-btn-read" class="btn-detail-action btn-primary">
+            立即閱讀
+          </button>
+        </div>
+
+        <!-- 小說簡介區塊 -->
+        <div class="book-detail-section">
+          <div class="section-title-row">
+            <h3 class="section-title">📖 內容簡介</h3>
+          </div>
+          <div id="detail-intro-box" class="book-detail-intro">
+            <p id="detail-intro-text">正在載入小說介紹...</p>
+          </div>
+        </div>
+
+        <!-- 章節目錄區塊 -->
+        <div class="book-detail-section">
+          <div class="section-title-row">
+            <div style="display:flex; align-items:baseline; gap:8px;">
+              <h3 class="section-title">📑 章節目錄</h3>
+              <span id="detail-chapter-count" style="font-size:12px; color:var(--text-muted);">共 0 章</span>
+            </div>
+            <button id="detail-btn-sort" class="btn-sort" title="切換正序/倒序">
+              <span id="detail-sort-label">⇅ 正序</span>
+            </button>
+          </div>
+
+          <!-- 章節過濾輸入框 -->
+          <div class="chapter-search-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="detail-chapter-filter" class="chapter-filter-input" placeholder="過濾章節名稱（如：第100章、番外）..." />
+          </div>
+
+          <!-- 載入中骨架屏 / 指示 -->
+          <div id="detail-loading-box" class="detail-loading">
+            <div class="detail-spinner"></div>
+            <span style="font-size:13px; color:var(--text-muted); margin-top:8px;">正在解析小說目錄與簡介...</span>
+          </div>
+
+          <!-- 錯誤提示 -->
+          <div id="detail-error-box" class="detail-error" style="display:none;">
+            <p id="detail-error-msg" style="margin-bottom:8px;">解析目錄失敗</p>
+            <button id="detail-btn-retry" class="btn-sm btn-primary">重新嘗試載入</button>
+          </div>
+
+          <!-- 目錄列表容器 -->
+          <div id="detail-chapter-list" class="book-detail-chapters"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================================================
          5. 全螢幕獨立閱讀器視圖 (Full Screen Reader View)
          ========================================================================== -->
     <div id="view-reader" class="theme-parchment">
@@ -177,7 +268,14 @@
           ←
         </button>
         <div id="reader-bar-title" class="reader-bar-title">載入中...</div>
-        <div style="display:flex; gap:12px; align-items:center;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button id="reader-btn-download" style="background:none; border:none; color:#fff; cursor:pointer;" title="下載/離線快取">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
           <button id="reader-btn-tts" style="background:none; border:none; color:#fff; cursor:pointer;" title="語音朗讀">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
           </button>
@@ -187,15 +285,8 @@
         </div>
       </div>
 
-      <!-- 閱讀內文區域 -->
+      <!-- 閱讀內文區域 (左右點擊翻頁，中央點擊喚出沉浸選單) -->
       <div id="reader-content-box" class="reader-content-box"></div>
-
-      <!-- 觸控熱區感應層 (左右翻頁/滾動，中央喚出選單) -->
-      <div class="touch-zone-container">
-        <div id="touch-zone-prev" class="touch-zone prev"></div>
-        <div id="touch-zone-menu" class="touch-zone menu"></div>
-        <div id="touch-zone-next" class="touch-zone next"></div>
-      </div>
 
       <!-- 閱讀器常駐狀態欄 (章節名稱與時間) -->
       <div class="reader-status-bar">
@@ -254,6 +345,55 @@
           <input type="text" id="drawer-search-input" class="form-input" placeholder="過濾/搜尋章節標題..." style="padding:6px 12px; font-size:12px;" />
         </div>
         <div id="reader-drawer-list" class="drawer-list"></div>
+      </div>
+    </div>
+
+    <!-- 離線快取與下載彈窗 (Download Modal) -->
+    <div id="reader-download-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content" style="max-width:380px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:6px;">
+            📥 離線快取與下載
+          </h3>
+          <button id="download-modal-close" class="btn-sm btn-secondary" style="border:none; padding:4px 8px; font-size:14px; cursor:pointer;">✕</button>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04); border:1px solid var(--surface-border); border-radius:8px; padding:12px; margin-bottom:14px;">
+          <div id="download-book-title" style="font-size:14px; font-weight:600; color:#fff; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">《小說名稱》</div>
+          <div id="download-cache-stats" style="font-size:12px; color:var(--text-muted);">已離線快取：計算中...</div>
+        </div>
+
+        <!-- 下載進度條 (預設隱藏) -->
+        <div id="download-progress-box" style="display:none; margin-bottom:14px; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); border-radius:8px; padding:10px;">
+          <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;">
+            <span id="download-status-text" style="color:#38bdf8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:75%;">正在下載...</span>
+            <span id="download-percent-text" style="color:#38bdf8; font-weight:bold;">0%</span>
+          </div>
+          <div style="height:6px; background:#0f172a; border-radius:3px; overflow:hidden;">
+            <div id="download-progress-bar" style="height:100%; width:0%; background:#38bdf8; transition:width 0.2s;"></div>
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+            <button id="btn-cancel-download" class="btn-sm btn-secondary" style="color:#ef4444; font-size:11px; padding:3px 8px;">停止下載</button>
+          </div>
+        </div>
+
+        <!-- 批次下載選項 -->
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">批次離線快取至本地（免網路閱讀）：</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:14px;">
+          <button id="btn-cache-next-50" class="btn-sm btn-secondary" style="padding:9px 0;">下載後續 50 章</button>
+          <button id="btn-cache-next-100" class="btn-sm btn-secondary" style="padding:9px 0;">下載後續 100 章</button>
+          <button id="btn-cache-all" class="btn-sm btn-primary" style="grid-column: span 2; padding:10px 0;">🚀 下載整本小說（全本快取）</button>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--surface-border); margin:12px 0;" />
+
+        <!-- 匯出 TXT -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:12px; color:var(--text-muted);">匯出檔案至裝置：</div>
+          <button id="btn-export-txt" class="btn-sm btn-secondary" style="padding:9px 0; display:flex; align-items:center; justify-content:center; gap:6px;">
+            💾 匯出為 TXT 小說文字檔 (.txt)
+          </button>
+        </div>
       </div>
     </div>
 
