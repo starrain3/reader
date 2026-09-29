@@ -347,15 +347,16 @@
             </div>
           </div>
 
-          <!-- 字體粗細調整 (Font Weight / Bold) -->
+          <!-- 字體粗細調整 (Font Weight Slider Bar) -->
           <div class="panel-section">
             <div class="panel-label-row">
-              <span>字體粗細 (Bold)</span>
+              <span>字體粗細</span>
+              <span id="text-panel-font-weight-val" style="color:var(--primary-color); font-weight:bold;">適中 (500)</span>
             </div>
-            <div class="font-weight-group" id="font-weight-group">
-              <button type="button" class="weight-pill" data-weight="400">標準</button>
-              <button type="button" class="weight-pill" data-weight="500">適中</button>
-              <button type="button" class="weight-pill" data-weight="700">加粗</button>
+            <div class="font-size-control-row">
+              <button id="btn-weight-dec" class="btn-sm btn-secondary" style="width:40px; height:36px; font-weight:300; font-size:13px;" title="變細">細-</button>
+              <input type="range" id="reader-font-weight-slider" min="300" max="900" step="100" value="500" class="reader-slider" />
+              <button id="btn-weight-inc" class="btn-sm btn-secondary" style="width:40px; height:36px; font-weight:700; font-size:13px;" title="變粗">粗+</button>
             </div>
           </div>
 

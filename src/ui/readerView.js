@@ -40,6 +40,8 @@ class ReaderViewController {
     this.isTextPanelVisible = false;
     this.fontSizeSlider = null;
     this.fontSizeValEl = null;
+    this.fontWeightSlider = null;
+    this.fontWeightValEl = null;
     this.customColorBtn = null;
     this.customColorContainer = null;
     this.inlineColorPicker = null;
@@ -88,6 +90,8 @@ class ReaderViewController {
     this.textPanel = document.getElementById('reader-text-panel');
     this.fontSizeSlider = document.getElementById('reader-font-size-slider');
     this.fontSizeValEl = document.getElementById('text-panel-font-size-val');
+    this.fontWeightSlider = document.getElementById('reader-font-weight-slider');
+    this.fontWeightValEl = document.getElementById('text-panel-font-weight-val');
     this.customColorBtn = document.getElementById('reader-custom-color-btn');
     this.customColorContainer = document.getElementById('custom-color-pills');
     this.inlineColorPicker = document.getElementById('inline-color-picker');
@@ -113,6 +117,7 @@ class ReaderViewController {
 
     if (this.fontSizeSlider) this.fontSizeSlider.value = this.fontSize;
     if (this.fontSizeValEl) this.fontSizeValEl.textContent = `${this.fontSize}px`;
+    if (this.fontWeightSlider) this.fontWeightSlider.value = this.fontWeight;
 
     this.renderCustomColorPills();
     this.applyTheme(this.theme);
@@ -248,12 +253,19 @@ class ReaderViewController {
       this.setFontSize(parseInt(e.target.value, 10));
     });
 
-    // 字體粗細 (Bold) 切換
-    document.querySelectorAll('.font-weight-group .weight-pill').forEach((pill) => {
-      pill.addEventListener('click', () => {
-        const weight = pill.dataset.weight || '500';
-        this.setFontWeight(weight);
-      });
+    // 字體粗細滑桿即時調節
+    this.fontWeightSlider?.addEventListener('input', (e) => {
+      this.setFontWeight(e.target.value, false);
+    });
+
+    // 字體粗細微調按鈕 (細- / 粗+)
+    document.getElementById('btn-weight-dec')?.addEventListener('click', () => {
+      const current = parseInt(this.fontWeight, 10) || 500;
+      this.setFontWeight(Math.max(300, current - 100), true);
+    });
+    document.getElementById('btn-weight-inc')?.addEventListener('click', () => {
+      const current = parseInt(this.fontWeight, 10) || 500;
+      this.setFontWeight(Math.min(900, current + 100), true);
     });
 
     // 文字顏色預設色票點擊切換
@@ -414,18 +426,40 @@ class ReaderViewController {
     showToast(`字體大小: ${this.fontSize}px`);
   }
 
-  setFontWeight(weight) {
-    this.fontWeight = weight;
-    saveSetting('reader_font_weight', weight);
+  setFontWeight(weight, notify = false) {
+    this.fontWeight = String(weight);
+    saveSetting('reader_font_weight', this.fontWeight);
     this.applyTypography();
-    const labelMap = { '400': '標準 (Normal)', '500': '適中 (Medium)', '700': '加粗 (Bold)' };
-    showToast(`字體粗細: ${labelMap[weight] || weight}`);
+    if (notify) {
+      const labelMap = {
+        '300': '纖細 (300)',
+        '400': '標準 (400)',
+        '500': '適中 (500)',
+        '600': '半粗 (600)',
+        '700': '加粗 (700)',
+        '800': '特粗 (800)',
+        '900': '黑體 (900)'
+      };
+      showToast(`字體粗細: ${labelMap[this.fontWeight] || this.fontWeight}`);
+    }
   }
 
   updateFontWeightUI() {
-    document.querySelectorAll('.font-weight-group .weight-pill').forEach((pill) => {
-      pill.classList.toggle('selected', pill.dataset.weight === String(this.fontWeight));
-    });
+    const labelMap = {
+      '300': '纖細 (300)',
+      '400': '標準 (400)',
+      '500': '適中 (500)',
+      '600': '半粗 (600)',
+      '700': '加粗 (700)',
+      '800': '特粗 (800)',
+      '900': '黑體 (900)'
+    };
+    if (this.fontWeightSlider) {
+      this.fontWeightSlider.value = this.fontWeight;
+    }
+    if (this.fontWeightValEl) {
+      this.fontWeightValEl.textContent = labelMap[this.fontWeight] || `${this.fontWeight}`;
+    }
   }
 
   getCurrentTextColorHex() {
@@ -495,24 +529,6 @@ class ReaderViewController {
     }
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
-    let h = 0, s = 0;
-    const l = (max + min) / 2;
-
-    if (max !== min) {
-      const d = max - min;
-      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-      switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-        case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h = Math.round(h * 60);
-    }
-    return {
-      h: Math.round(h),
-      s: Math.round(s * 100),
-      l: Math.round(l * 100)
-    };
   }
 
   hslToHex(h, s, l) {
