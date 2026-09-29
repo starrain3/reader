@@ -21,6 +21,7 @@ class ReaderViewController {
     this.theme = 'theme-parchment';
     this.openccEnabled = true;
     this.textColor = null;
+    this.customColors = [];
     this.sourcesMap = new Map();
 
     // DOM 元素引用
@@ -40,6 +41,8 @@ class ReaderViewController {
     this.fontSizeSlider = null;
     this.fontSizeValEl = null;
     this.customColorInput = null;
+    this.customColorLabel = null;
+    this.customColorContainer = null;
     this.isDownloading = false;
     this.cancelDownloadFlag = false;
 
@@ -76,6 +79,8 @@ class ReaderViewController {
     this.fontSizeSlider = document.getElementById('reader-font-size-slider');
     this.fontSizeValEl = document.getElementById('text-panel-font-size-val');
     this.customColorInput = document.getElementById('reader-custom-color-input');
+    this.customColorLabel = document.getElementById('reader-custom-color-label');
+    this.customColorContainer = document.getElementById('custom-color-pills');
 
     // 載入偏好設定
     this.fontSize = await getSetting('reader_font_size', 18);
@@ -84,11 +89,16 @@ class ReaderViewController {
     this.theme = await getSetting('reader_theme', 'theme-parchment');
     this.openccEnabled = await getSetting('reader_opencc', true);
     this.textColor = await getSetting('reader_font_color', null);
+    this.customColors = await getSetting('reader_custom_text_colors', []);
+    if (!Array.isArray(this.customColors)) {
+      this.customColors = [];
+    }
     this.wakeLockEnabled = await getSetting('reader_wake_lock', true);
 
     if (this.fontSizeSlider) this.fontSizeSlider.value = this.fontSize;
     if (this.fontSizeValEl) this.fontSizeValEl.textContent = `${this.fontSize}px`;
 
+    this.renderCustomColorPills();
     this.applyTheme(this.theme);
     this.applyTypography();
     this.updateWakeLockUI();
@@ -229,8 +239,8 @@ class ReaderViewController {
       });
     });
 
-    // 文字顏色色票點擊切換
-    document.querySelectorAll('.text-color-palette .color-pill').forEach((pill) => {
+    // 文字顏色預設色票點擊切換
+    document.querySelectorAll('.text-color-palette > .color-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
         if (pill.classList.contains('color-custom-btn')) return;
         const color = pill.dataset.color || null;
@@ -243,9 +253,25 @@ class ReaderViewController {
       this.setTextColor(null);
     });
 
-    // 自訂文字顏色
+    // 自訂顏色：點開取色盤前先同步為當前內文文字顏色
+    const syncColorPickerValue = () => {
+      this.prepareCustomColorPicker();
+    };
+    this.customColorLabel?.addEventListener('pointerdown', syncColorPickerValue);
+    this.customColorLabel?.addEventListener('click', syncColorPickerValue);
+
+    // 自訂文字顏色：拖曳調色時即時預覽內文效果
     this.customColorInput?.addEventListener('input', (e) => {
-      this.setTextColor(e.target.value);
+      if (e.target.value) {
+        this.setTextColor(e.target.value, false);
+      }
+    });
+
+    // 自訂文字顏色：選定確定後加入常用自訂顏色並記住
+    this.customColorInput?.addEventListener('change', (e) => {
+      if (e.target.value) {
+        this.addCustomColor(e.target.value);
+      }
     });
 
     // 繁簡切換
@@ -371,14 +397,100 @@ class ReaderViewController {
     });
   }
 
-  setTextColor(color) {
+  getCurrentTextColorHex() {
+    if (this.textColor && /^#[0-9a-fA-F]{6}$/i.test(this.textColor)) {
+      return this.textColor;
+    }
+    if (this.contentBox) {
+      const computed = window.getComputedStyle(this.contentBox).color;
+      const match = computed ? computed.match(/\d+/g) : null;
+      if (match && match.length >= 3) {
+        const r = parseInt(match[0], 10).toString(16).padStart(2, '0');
+        const g = parseInt(match[1], 10).toString(16).padStart(2, '0');
+        const b = parseInt(match[2], 10).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`;
+      }
+    }
+    const themeDefaultMap = {
+      'theme-white': '#2b2b2b',
+      'theme-green': '#1e3522',
+      'theme-parchment': '#382e25',
+      'theme-dark': '#cbd5e1',
+      'theme-black': '#94a3b8'
+    };
+    return themeDefaultMap[this.theme] || '#2b2b2b';
+  }
+
+  prepareCustomColorPicker() {
+    if (this.customColorInput) {
+      this.customColorInput.value = this.getCurrentTextColorHex();
+    }
+  }
+
+  async addCustomColor(color) {
+    if (!color) return;
+    const hex = color.toLowerCase();
+    this.customColors = [hex, ...this.customColors.filter((c) => c.toLowerCase() !== hex)].slice(0, 10);
+    await saveSetting('reader_custom_text_colors', this.customColors);
+    this.renderCustomColorPills();
+    this.setTextColor(hex, true);
+  }
+
+  async removeCustomColor(color, event) {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    const hex = color.toLowerCase();
+    this.customColors = this.customColors.filter((c) => c.toLowerCase() !== hex);
+    await saveSetting('reader_custom_text_colors', this.customColors);
+    this.renderCustomColorPills();
+    this.updateColorPaletteUI();
+    showToast('已刪除自訂顏色');
+  }
+
+  renderCustomColorPills() {
+    if (!this.customColorContainer) return;
+    this.customColorContainer.innerHTML = '';
+
+    this.customColors.forEach((color) => {
+      const pill = document.createElement('div');
+      pill.className = 'color-pill color-pill-custom';
+      pill.dataset.color = color;
+      pill.title = `自訂顏色: ${color}`;
+      pill.style.backgroundColor = color;
+
+      // 右上角刪除按鈕徽章
+      const delBtn = document.createElement('button');
+      delBtn.className = 'color-pill-delete-btn';
+      delBtn.type = 'button';
+      delBtn.title = '刪除此顏色';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', (e) => this.removeCustomColor(color, e));
+
+      pill.appendChild(delBtn);
+
+      pill.addEventListener('click', (e) => {
+        if (e.target === delBtn) return;
+        this.setTextColor(color);
+      });
+
+      this.customColorContainer.appendChild(pill);
+    });
+
+    this.updateColorPaletteUI();
+  }
+
+  setTextColor(color, notify = true) {
     this.textColor = color;
     saveSetting('reader_font_color', color);
     this.applyTypography();
-    if (color) {
-      showToast('文字顏色已變更');
-    } else {
-      showToast('已恢復主題預設文字顏色');
+    if (notify) {
+      if (color) {
+        showToast('文字顏色已變更');
+      } else {
+        showToast('已恢復主題預設文字顏色');
+      }
     }
   }
 
@@ -405,12 +517,14 @@ class ReaderViewController {
     document.querySelectorAll('.text-color-palette .color-pill').forEach((pill) => {
       if (pill.classList.contains('color-custom-btn')) return;
       const color = (pill.dataset.color || '').toLowerCase();
-      const isSelected = color === current;
-      pill.classList.toggle('selected', isSelected);
-      if (isSelected) matched = true;
+      const isSelected = Boolean(color && color === current);
+      const isDefaultThemePill = !current && pill.dataset.color === '';
+      const selected = isSelected || isDefaultThemePill;
+      pill.classList.toggle('selected', selected);
+      if (selected) matched = true;
     });
 
-    const customBtn = document.querySelector('.color-custom-btn');
+    const customBtn = document.getElementById('reader-custom-color-label') || document.querySelector('.color-custom-btn');
     if (customBtn) {
       customBtn.classList.toggle('selected', Boolean(current && !matched));
     }

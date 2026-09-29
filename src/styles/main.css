@@ -805,12 +805,27 @@ body {
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
 }
 
-/* 文字顏色色票 */
+/* 文字顏色色票：單排水平滑動容器 */
 .text-color-palette {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 4px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  -webkit-overflow-scrolling: touch;
+}
+
+.text-color-palette::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}
+
+.custom-color-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .color-pill {
@@ -843,6 +858,37 @@ body {
   font-weight: bold;
   color: #38bdf8;
   text-shadow: 0 0 3px #000;
+}
+
+.color-pill-custom {
+  position: relative;
+}
+
+/* 自訂色票右上角刪除按鈕徽章 */
+.color-pill-delete-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s, background-color 0.15s;
+}
+
+.color-pill-delete-btn:hover {
+  transform: scale(1.25);
+  background: #dc2626;
 }
 
 .color-custom-btn {
