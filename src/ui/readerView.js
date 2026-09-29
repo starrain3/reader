@@ -49,6 +49,10 @@ class ReaderViewController {
     this.highestRenderedIndex = 0;
     this.isLoadingNext = false;
     this.isLoadingPrev = false;
+
+    // 閱讀進度細部定位狀態 (段落與防抖保存)
+    this.currentParagraphIndex = 0;
+    this.saveProgressTimer = null;
   }
 
   async init() {
@@ -109,6 +113,14 @@ class ReaderViewController {
     // 連續滾動監聽：滑動接近底部時自動載入追加下一章，並動態偵測當前可見章節
     this.contentBox?.addEventListener('scroll', () => {
       this.handleContinuousScroll();
+    });
+
+    // 視窗離開或重新整理前立即保存進度
+    window.addEventListener('beforeunload', () => {
+      this.persistReadingProgress();
+    });
+    window.addEventListener('pagehide', () => {
+      this.persistReadingProgress();
     });
 
     // 頂部返回按鈕
@@ -426,6 +438,7 @@ class ReaderViewController {
 
     this.currentBook = book;
     this.currentChapterIndex = startChapterIndex !== null ? startChapterIndex : (book.lastChapterIndex || 0);
+    const startParagraphIndex = startChapterIndex !== null ? 0 : (book.lastParagraphIndex || 0);
 
     // 快取書源對照表
     const sources = await getAllSources();
@@ -443,11 +456,12 @@ class ReaderViewController {
       this.slider.value = this.currentChapterIndex;
     }
 
-    await this.loadChapter(this.currentChapterIndex);
+    await this.loadChapter(this.currentChapterIndex, startParagraphIndex);
     this.renderDrawer();
   }
 
   closeReader() {
+    this.persistReadingProgress();
     this.cancelDownload();
     this.closeDownloadModal();
     this.currentBook = null;
@@ -466,17 +480,19 @@ class ReaderViewController {
     if (newIndex < 0 || newIndex >= this.currentBook.chapters.length) return;
 
     this.currentChapterIndex = newIndex;
+    this.currentParagraphIndex = 0;
     if (this.slider) this.slider.value = newIndex;
 
     // 儲存進度至資料庫
     this.currentBook.lastChapterIndex = newIndex;
     this.currentBook.lastChapterTitle = this.currentBook.chapters[newIndex]?.title || '';
+    this.currentBook.lastParagraphIndex = 0;
     await saveBook(this.currentBook);
 
-    await this.loadChapter(newIndex);
+    await this.loadChapter(newIndex, 0);
   }
 
-  async loadChapter(index) {
+  async loadChapter(index, targetParagraphIndex = 0) {
     const chapterMeta = this.currentBook?.chapters?.[index];
     if (!chapterMeta) return;
 
@@ -490,6 +506,7 @@ class ReaderViewController {
     this.lowestRenderedIndex = index;
     this.highestRenderedIndex = index;
     this.currentChapterIndex = index;
+    this.currentParagraphIndex = targetParagraphIndex;
     this.isLoadingNext = false;
     this.isLoadingPrev = false;
 
@@ -507,7 +524,7 @@ class ReaderViewController {
         </div>
       `;
       document.getElementById('btn-retry-chapter')?.addEventListener('click', () => {
-        this.loadChapter(index);
+        this.loadChapter(index, targetParagraphIndex);
       });
       document.getElementById('btn-chapter-error-back')?.addEventListener('click', () => {
         this.closeReader();
@@ -519,12 +536,41 @@ class ReaderViewController {
     this.currentChapter = chapterData;
 
     this.contentBox.innerHTML = this.buildChapterHTML(chapterData, true);
-    this.contentBox.scrollTop = 0;
 
-    await this.updateActiveChapterUI(index);
+    if (targetParagraphIndex > 0) {
+      this.scrollToParagraph(index, targetParagraphIndex);
+    } else {
+      this.contentBox.scrollTop = 0;
+    }
+
+    await this.updateActiveChapterUI(index, false);
 
     // 背景智慧預加載下一章
     this.prefetchNextChapter(index + 1);
+  }
+
+  /**
+   * 瞬間精確捲動至指定章節與段落
+   */
+  scrollToParagraph(chapterIndex, paragraphIndex) {
+    if (!this.contentBox) return;
+
+    const applyScroll = () => {
+      const targetP = this.contentBox.querySelector(
+        `.reader-chapter-block[data-chapter-index="${chapterIndex}"] .reader-paragraph[data-idx="${paragraphIndex}"]`
+      );
+      if (targetP) {
+        const boxRect = this.contentBox.getBoundingClientRect();
+        const pRect = targetP.getBoundingClientRect();
+        const offsetDiff = pRect.top - boxRect.top;
+        this.contentBox.scrollTop = Math.max(0, this.contentBox.scrollTop + offsetDiff - 16);
+      } else {
+        this.contentBox.scrollTop = 0;
+      }
+    };
+
+    applyScroll();
+    requestAnimationFrame(applyScroll);
   }
 
   /**
@@ -717,7 +763,7 @@ class ReaderViewController {
   }
 
   /**
-   * 滾動事件處理：雙向感應 (接近頂部追加上一章，接近底端追加下一章，並動態偵測當前可見章節同步進度)
+   * 滾動事件處理：雙向感應 (接近頂部追加上一章，接近底端追加下一章，並動態偵測當前可見章節與段落同步進度)
    */
   handleContinuousScroll() {
     if (!this.contentBox || !this.currentBook) return;
@@ -733,30 +779,107 @@ class ReaderViewController {
       this.appendNextChapter();
     }
 
-    // 3. 判定目前視野頂部所在章節，即時更新常駐標題與進度
-    const blocks = this.contentBox.querySelectorAll('.reader-chapter-block');
-    const boxRect = this.contentBox.getBoundingClientRect();
-    const thresholdY = boxRect.top + boxRect.height * 0.35;
+    // 3. 判定目前視野頂部所在章節與段落
+    this.detectCurrentReadingPosition();
+  }
 
-    let activeIndex = this.currentChapterIndex;
-    for (const block of blocks) {
-      const bRect = block.getBoundingClientRect();
-      if (bRect.top <= thresholdY && bRect.bottom > boxRect.top) {
-        activeIndex = parseInt(block.dataset.chapterIndex, 10);
+  /**
+   * 偵測當前視野正處於哪一章節的哪一個段落，並排程防抖保存進度
+   */
+  detectCurrentReadingPosition() {
+    if (!this.contentBox || !this.currentBook) return;
+
+    const boxRect = this.contentBox.getBoundingClientRect();
+    const probeY = boxRect.top + 60; // 頂部偏移探針
+    const probeX = boxRect.left + Math.min(boxRect.width / 2, 80);
+
+    let activeChapterIdx = this.currentChapterIndex;
+    let activeParagraphIdx = this.currentParagraphIndex;
+
+    // 1. 優先透過 elementFromPoint 高效率命中段落
+    const hitEl = document.elementFromPoint(probeX, probeY);
+    const pEl = hitEl?.closest('.reader-paragraph');
+    const titleEl = hitEl?.closest('.reader-chapter-title');
+
+    if (pEl) {
+      const blockEl = pEl.closest('.reader-chapter-block');
+      if (blockEl) {
+        activeChapterIdx = parseInt(blockEl.dataset.chapterIndex, 10);
+        activeParagraphIdx = parseInt(pEl.dataset.idx, 10);
+      }
+    } else if (titleEl) {
+      const blockEl = titleEl.closest('.reader-chapter-block');
+      if (blockEl) {
+        activeChapterIdx = parseInt(blockEl.dataset.chapterIndex, 10);
+        activeParagraphIdx = 0;
+      }
+    } else {
+      // 2. 備用方案：區塊與段落幾何判定
+      const blocks = this.contentBox.querySelectorAll('.reader-chapter-block');
+      const thresholdY = boxRect.top + boxRect.height * 0.35;
+      for (const block of blocks) {
+        const bRect = block.getBoundingClientRect();
+        if (bRect.top <= thresholdY && bRect.bottom > boxRect.top) {
+          activeChapterIdx = parseInt(block.dataset.chapterIndex, 10);
+          const paragraphs = block.querySelectorAll('.reader-paragraph');
+          for (const p of paragraphs) {
+            const pr = p.getBoundingClientRect();
+            if (pr.bottom >= boxRect.top + 20) {
+              activeParagraphIdx = parseInt(p.dataset.idx, 10);
+              break;
+            }
+          }
+        }
       }
     }
 
-    if (activeIndex !== this.currentChapterIndex) {
-      this.updateActiveChapterUI(activeIndex);
+    if (activeChapterIdx !== this.currentChapterIndex) {
+      this.updateActiveChapterUI(activeChapterIdx, false);
+    }
+
+    if (activeChapterIdx !== this.currentChapterIndex || activeParagraphIdx !== this.currentParagraphIndex) {
+      this.currentChapterIndex = activeChapterIdx;
+      this.currentParagraphIndex = activeParagraphIdx;
+      this.scheduleSaveProgress();
     }
   }
 
   /**
-   * 更新當前可見章節 UI 與儲存閱讀進度
+   * 排程防抖保存進度 (400ms)
    */
-  async updateActiveChapterUI(index) {
+  scheduleSaveProgress() {
+    clearTimeout(this.saveProgressTimer);
+    this.saveProgressTimer = setTimeout(() => {
+      this.persistReadingProgress();
+    }, 400);
+  }
+
+  /**
+   * 立即儲存當前閱讀進度至資料庫
+   */
+  async persistReadingProgress() {
+    clearTimeout(this.saveProgressTimer);
+    if (!this.currentBook || !this.currentBook.chapters) return;
+
+    const chapMeta = this.currentBook.chapters[this.currentChapterIndex];
+    this.currentBook.lastChapterIndex = this.currentChapterIndex;
+    this.currentBook.lastParagraphIndex = this.currentParagraphIndex || 0;
+    if (chapMeta) {
+      this.currentBook.lastChapterTitle = chapMeta.title;
+    }
+    try {
+      await saveBook(this.currentBook);
+    } catch (err) {
+      console.warn('儲存閱讀進度失敗:', err);
+    }
+  }
+
+  /**
+   * 更新當前可見章節 UI (標題與目錄高亮)
+   */
+  async updateActiveChapterUI(index, shouldSave = true) {
     this.currentChapterIndex = index;
-    const chapMeta = this.currentBook.chapters[index];
+    const chapMeta = this.currentBook?.chapters?.[index];
     if (!chapMeta) return;
 
     const titleText = convertToTraditional(chapMeta.title, this.openccEnabled);
@@ -767,10 +890,9 @@ class ReaderViewController {
     // 同步更新目錄抽屜的高亮項
     this.updateDrawerActiveItem(index);
 
-    // 儲存進度至資料庫
-    this.currentBook.lastChapterIndex = index;
-    this.currentBook.lastChapterTitle = chapMeta.title;
-    await saveBook(this.currentBook);
+    if (shouldSave) {
+      this.scheduleSaveProgress();
+    }
   }
 
   /**
@@ -1031,6 +1153,9 @@ class ReaderViewController {
 
   highlightTTSParagraph(pIdx) {
     if (!this.contentBox) return;
+    this.currentParagraphIndex = pIdx;
+    this.scheduleSaveProgress();
+
     this.contentBox.querySelectorAll('.reader-paragraph').forEach((p) => {
       p.style.backgroundColor = 'transparent';
       p.style.borderRadius = '0';
@@ -1172,48 +1297,52 @@ class ReaderViewController {
 
     if (progressBox) progressBox.style.display = 'block';
 
+    const CONCURRENCY = 4; // 並發下載通道數
+    const MAX_RETRIES = 3; // 失敗時最多重試 3 次 (共 4 次機會)
+    const TIMEOUT_MS = 5000; // 單章超時 5 秒
+
+    let nextQueueIndex = 0;
+    let completedCount = 0;
     let successCount = 0;
     let failedCount = 0;
     const totalToDownload = targetIndices.length;
 
-    for (let i = 0; i < targetIndices.length; i++) {
-      if (this.cancelDownloadFlag) {
-        showToast('已取消後續章節下載，已下載內容已保留');
-        break;
-      }
-
-      const chapIndex = targetIndices[i];
-      const chapMeta = this.currentBook.chapters[chapIndex];
-      const progressPercent = Math.round(((i + 1) / totalToDownload) * 100);
-
-      if (statusText) statusText.textContent = `(${i + 1}/${totalToDownload}) ${chapMeta.title}`;
-      if (percentText) percentText.textContent = `${progressPercent}%`;
+    const updateUI = (extraMsg = '') => {
+      const progressPercent = totalToDownload > 0 ? Math.round((completedCount / totalToDownload) * 100) : 0;
       if (progressBar) progressBar.style.width = `${progressPercent}%`;
+      if (percentText) percentText.textContent = `${progressPercent}%`;
+      if (statusText) {
+        if (extraMsg) {
+          statusText.textContent = `(${completedCount}/${totalToDownload}) ${extraMsg}`;
+        } else {
+          statusText.textContent = `(${completedCount}/${totalToDownload}) 成功 ${successCount} / 失敗 ${failedCount} (4並發高速下載中...)`;
+        }
+      }
+    };
 
-      const MAX_RETRIES = 3; // 失敗時最多自動重試 3 次（共 4 次嘗試機會）
+    updateUI();
+
+    const downloadChapterWithRetry = async (chapIndex) => {
+      const chapMeta = this.currentBook.chapters[chapIndex];
       let downloaded = false;
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (this.cancelDownloadFlag) break;
 
-        // 若為重試 (attempt >= 1)，更新介面提示並進行漸進退避等待 (1s, 2s, 3s)
         if (attempt > 0) {
-          if (statusText) {
-            statusText.textContent = `(${i + 1}/${totalToDownload}) ${chapMeta.title} (下載失敗，重試中 ${attempt}/${MAX_RETRIES})...`;
-          }
-
-          const backoffMs = attempt * 1000;
+          updateUI(`[重試 ${attempt}/${MAX_RETRIES}] ${chapMeta.title}...`);
+          const backoffMs = attempt * 800;
           const waitStart = Date.now();
           while (Date.now() - waitStart < backoffMs) {
             if (this.cancelDownloadFlag) break;
-            await new Promise((r) => setTimeout(r, 100));
+            await new Promise((r) => setTimeout(r, 80));
           }
           if (this.cancelDownloadFlag) break;
         }
 
         try {
           if (chapMeta.url && source) {
-            const content = await getChapterContent(chapMeta.url, source);
+            const content = await getChapterContent(chapMeta.url, source, { timeout: TIMEOUT_MS });
             await saveChapter({
               bookId: this.currentBook.id,
               index: chapIndex,
@@ -1221,25 +1350,45 @@ class ReaderViewController {
               url: chapMeta.url,
               content
             });
-            successCount++;
             downloaded = true;
-            break; // 下載成功，跳出重試迴圈
+            break;
           }
         } catch (err) {
-          console.warn(`下載章節 #${chapIndex} 第 ${attempt + 1} 次嘗試失敗:`, err);
-          if (attempt === MAX_RETRIES) {
-            failedCount++;
-          }
+          console.warn(`[並發下載] 章節 #${chapIndex} (${chapMeta.title}) 第 ${attempt + 1} 次嘗試失敗:`, err);
         }
       }
 
-      if (this.cancelDownloadFlag) {
-        showToast('已取消後續章節下載，已下載內容已保留');
-        break;
+      completedCount++;
+      if (downloaded) {
+        successCount++;
+      } else {
+        failedCount++;
       }
+      updateUI();
+    };
 
-      // 適當防抖延遲 180ms，避免過於頻繁請求站點
-      await new Promise((r) => setTimeout(r, 180));
+    // 啟動 4 個並發 Worker
+    const worker = async () => {
+      while (nextQueueIndex < targetIndices.length && !this.cancelDownloadFlag) {
+        const queueIdx = nextQueueIndex++;
+        const chapIndex = targetIndices[queueIdx];
+        await downloadChapterWithRetry(chapIndex);
+        if (this.cancelDownloadFlag) break;
+        // 微小間隔 60ms 平滑請求波峰
+        await new Promise((r) => setTimeout(r, 60));
+      }
+    };
+
+    const workers = [];
+    const actualConcurrency = Math.min(CONCURRENCY, targetIndices.length);
+    for (let w = 0; w < actualConcurrency; w++) {
+      workers.push(worker());
+    }
+
+    await Promise.all(workers);
+
+    if (this.cancelDownloadFlag) {
+      showToast('已取消後續章節下載，已下載內容已保留');
     }
 
     this.isDownloading = false;

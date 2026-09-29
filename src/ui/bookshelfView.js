@@ -14,12 +14,16 @@ class BookshelfViewController {
     this.container = null;
     this.txtInput = null;
     this.epubInput = null;
+    this.isManaging = false;
+    this.pendingDeleteBookId = null;
+    this.deleteModal = null;
   }
 
   init() {
     this.container = document.getElementById('bookshelf-container');
     this.txtInput = document.getElementById('file-input-txt');
     this.epubInput = document.getElementById('file-input-epub');
+    this.deleteModal = document.getElementById('book-delete-modal');
 
     this.bindEvents();
     this.render();
@@ -68,6 +72,21 @@ class BookshelfViewController {
       }
       this.epubInput.value = '';
     });
+
+    // 刪除彈窗按鈕事件
+    document.getElementById('btn-cancel-delete-book')?.addEventListener('click', () => {
+      this.closeDeleteModal();
+    });
+
+    document.getElementById('btn-confirm-delete-book')?.addEventListener('click', () => {
+      this.confirmDeleteBook();
+    });
+
+    this.deleteModal?.addEventListener('click', (e) => {
+      if (e.target === this.deleteModal) {
+        this.closeDeleteModal();
+      }
+    });
   }
 
   async importLocalBook(bookData) {
@@ -82,6 +101,7 @@ class BookshelfViewController {
       sourceId: bookData.sourceId,
       sourceName: bookData.sourceName,
       lastChapterIndex: 0,
+      lastParagraphIndex: 0,
       lastChapterTitle: chapters[0]?.title || '',
       chapters: chapters.map((c) => ({ index: c.index, title: c.title }))
     };
@@ -103,6 +123,7 @@ class BookshelfViewController {
     const books = await getAllBooks();
 
     if (books.length === 0) {
+      this.isManaging = false;
       this.container.innerHTML = `
         <div style="text-align:center; padding: 80px 20px; color:var(--text-muted);">
           <div style="font-size: 48px; margin-bottom: 16px;">📖</div>
@@ -114,24 +135,79 @@ class BookshelfViewController {
     }
 
     this.container.innerHTML = `
+      <div class="bookshelf-toolbar">
+        <span style="font-size:13px; color:var(--text-muted);">共 ${books.length} 本書籍</span>
+        <button id="btn-toggle-manage" class="btn-sm ${this.isManaging ? 'btn-primary' : 'btn-secondary'}" style="font-size:12px; padding:4px 10px;">
+          ${this.isManaging ? '✓ 完成' : '⚙️ 管理書籍'}
+        </button>
+      </div>
       <div class="bookshelf-grid">
         ${books.map((b) => this.renderBookCard(b)).join('')}
       </div>
     `;
 
-    // 綁定點擊事件
+    // 綁定管理模式切換按鈕
+    document.getElementById('btn-toggle-manage')?.addEventListener('click', () => {
+      this.isManaging = !this.isManaging;
+      this.render();
+    });
+
+    // 綁定卡片點擊與長按事件
     this.container.querySelectorAll('.book-card').forEach((card) => {
       const bookId = card.dataset.id;
-      
+      let longPressTimer = null;
+      let isLongPressTriggered = false;
+
+      // 長按事件支援 (行動裝置與滑鼠長按 500ms 喚起刪除)
+      const startLongPress = () => {
+        isLongPressTriggered = false;
+        longPressTimer = setTimeout(() => {
+          isLongPressTriggered = true;
+          this.showDeleteModal(bookId);
+        }, 500);
+      };
+
+      const cancelLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      card.addEventListener('touchstart', startLongPress, { passive: true });
+      card.addEventListener('touchend', cancelLongPress);
+      card.addEventListener('touchmove', cancelLongPress);
+      card.addEventListener('mousedown', startLongPress);
+      card.addEventListener('mouseup', cancelLongPress);
+      card.addEventListener('mouseleave', cancelLongPress);
+
       card.addEventListener('click', (e) => {
-        // 若點擊的是更多選單按鈕則不觸發閱讀
-        if (e.target.closest('.btn-book-more')) return;
+        if (isLongPressTriggered) {
+          isLongPressTriggered = false;
+          return;
+        }
+        // 若點擊的是刪除徽章或刪除按鈕
+        if (e.target.closest('.btn-card-delete-badge') || e.target.closest('.btn-book-delete')) {
+          return;
+        }
+        // 在管理模式下點擊卡片直接開啟刪除確認
+        if (this.isManaging) {
+          this.showDeleteModal(bookId);
+          return;
+        }
         readerView.openBook(bookId);
       });
 
-      card.querySelector('.btn-book-more')?.addEventListener('click', (e) => {
+      // 管理模式下的紅色刪除徽章
+      card.querySelector('.btn-card-delete-badge')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.showBookActionModal(bookId);
+        this.showDeleteModal(bookId);
+      });
+
+      // 卡片右下角的垃圾桶刪除按鈕
+      card.querySelector('.btn-book-delete')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showDeleteModal(bookId);
       });
     });
   }
@@ -147,16 +223,20 @@ class BookshelfViewController {
       ? `<div class="book-cover" style="background-image: url('${book.cover}')"></div>`
       : `<div class="book-cover"><span style="font-weight:700;">${title.substring(0, 8)}</span></div>`;
 
+    const badgeHtml = this.isManaging
+      ? `<button class="btn-card-delete-badge" title="刪除此書" data-id="${book.id}">✕</button>`
+      : `<span class="book-badge">${book.sourceName || '本地'}</span>`;
+
     return `
-      <div class="book-card" data-id="${book.id}">
+      <div class="book-card ${this.isManaging ? 'is-managing' : ''}" data-id="${book.id}">
         ${coverHtml}
-        <span class="book-badge">${book.sourceName || '本地'}</span>
+        ${badgeHtml}
         <div class="book-info">
           <div class="book-name">${title}</div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div class="book-progress">${progress}% · ${author}</div>
-            <button class="btn-book-more" style="background:none; border:none; color:var(--text-muted); padding:4px; cursor:pointer;">
-              ⋮
+            <button class="btn-book-delete" title="刪除書籍" data-id="${book.id}">
+              🗑️
             </button>
           </div>
         </div>
@@ -164,18 +244,40 @@ class BookshelfViewController {
     `;
   }
 
-  async showBookActionModal(bookId) {
+  async showDeleteModal(bookId) {
     const book = await getBook(bookId);
     if (!book) return;
 
-    const action = confirm(
-      `《${book.title}》\n\n- 按「確定」：刪除此書籍與離線內容\n- 按「取消」：返回`
-    );
+    this.pendingDeleteBookId = bookId;
+    const titleEl = document.getElementById('delete-modal-book-title');
+    if (titleEl) {
+      titleEl.textContent = `《${convertToTraditional(book.title)}》`;
+    }
+    if (this.deleteModal) {
+      this.deleteModal.style.display = 'flex';
+    }
+  }
 
-    if (action) {
+  closeDeleteModal() {
+    this.pendingDeleteBookId = null;
+    if (this.deleteModal) {
+      this.deleteModal.style.display = 'none';
+    }
+  }
+
+  async confirmDeleteBook() {
+    if (!this.pendingDeleteBookId) return;
+    const bookId = this.pendingDeleteBookId;
+    const book = await getBook(bookId);
+    const title = book ? book.title : '';
+    this.closeDeleteModal();
+
+    try {
       await deleteBook(bookId);
-      showToast(`已刪除《${book.title}》`);
-      this.render();
+      showToast(`已將《${convertToTraditional(title)}》從書架移除`);
+      await this.render();
+    } catch (err) {
+      showToast(`刪除失敗: ${err.message}`);
     }
   }
 }

@@ -3,6 +3,8 @@
  * 用於儲存書籍、離線快取章節、自訂書源與使用者設定
  */
 
+import { compressText, decompressText } from '../services/compression.js';
+
 const DB_NAME = 'KuNovelReaderDB';
 const DB_VERSION = 1;
 
@@ -123,7 +125,18 @@ export async function getChapter(bookId, index) {
   const store = await getStore('chapters');
   return new Promise((resolve, reject) => {
     const request = store.get(id);
-    request.onsuccess = () => resolve(request.result || null);
+    request.onsuccess = async () => {
+      const record = request.result;
+      if (!record) return resolve(null);
+      if (record.content && (record.isCompressed || typeof record.content !== 'string')) {
+        try {
+          record.content = await decompressText(record.content);
+        } catch (e) {
+          console.warn(`[DB] 解壓章節 #${index} 失敗:`, e);
+        }
+      }
+      resolve(record);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -134,8 +147,13 @@ export async function saveChapter(chapter) {
     chapter.id = `${chapter.bookId}_${chapter.index}`;
   }
   chapter.cachedAt = Date.now();
+  const toSave = { ...chapter };
+  if (toSave.content && typeof toSave.content === 'string') {
+    toSave.content = await compressText(toSave.content);
+    toSave.isCompressed = true;
+  }
   return new Promise((resolve, reject) => {
-    const request = store.put(chapter);
+    const request = store.put(toSave);
     request.onsuccess = () => resolve(chapter);
     request.onerror = () => reject(request.error);
   });
@@ -144,10 +162,22 @@ export async function saveChapter(chapter) {
 export async function saveChaptersBatch(chapters) {
   const store = await getStore('chapters', 'readwrite');
   const now = Date.now();
+
+  const processed = await Promise.all(
+    chapters.map(async (chap) => {
+      const toSave = { ...chap };
+      if (!toSave.id) toSave.id = `${toSave.bookId}_${toSave.index}`;
+      toSave.cachedAt = now;
+      if (toSave.content && typeof toSave.content === 'string') {
+        toSave.content = await compressText(toSave.content);
+        toSave.isCompressed = true;
+      }
+      return toSave;
+    })
+  );
+
   return new Promise((resolve, reject) => {
-    for (const chap of chapters) {
-      if (!chap.id) chap.id = `${chap.bookId}_${chap.index}`;
-      chap.cachedAt = now;
+    for (const chap of processed) {
       store.put(chap);
     }
     store.transaction.oncomplete = () => resolve(true);

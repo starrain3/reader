@@ -213,6 +213,7 @@ class SearchViewController {
       sourceName: source.name,
       bookUrl,
       lastChapterIndex: 0,
+      lastParagraphIndex: 0,
       lastChapterTitle: detail.chapters[0]?.title || '',
       chapters: detail.chapters.map((c) => ({
         index: c.index,

@@ -460,6 +460,24 @@
       </div>
     </div>
 
+    <!-- 書籍刪除確認彈窗 (Book Delete Modal) -->
+    <div id="book-delete-modal" class="modal-overlay" style="display:none;">
+      <div class="modal-content" style="max-width:340px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+          <span style="font-size:20px;">🗑️</span>
+          <h3 style="font-size:16px; font-weight:700;">刪除書籍確認</h3>
+        </div>
+        <div style="font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:16px;">
+          確定要將 <span id="delete-modal-book-title" style="color:#fff; font-weight:600;">《小說》</span> 從書架移除嗎？<br>
+          <span style="font-size:12px; color:var(--text-muted);">此操作將一併清除該書的所有已下載章節快取，且無法復原。</span>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button id="btn-cancel-delete-book" class="btn-sm btn-secondary" style="padding:6px 14px;">取消</button>
+          <button id="btn-confirm-delete-book" class="btn-sm" style="background:#ef4444; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-weight:600; cursor:pointer;">確認刪除</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 自訂書源編輯彈窗 (Modal) -->
     <div id="source-modal" class="modal-overlay" style="display:none;">
       <div class="modal-content">

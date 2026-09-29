@@ -265,8 +265,8 @@ export async function getBookDetailAndChapters(bookUrl, source) {
 /**
  * 抓取並解析單一章節的內文
  */
-export async function getChapterContent(chapterUrl, source) {
-  const html = await fetchText(chapterUrl, {}, source.charset || 'auto');
+export async function getChapterContent(chapterUrl, source, options = {}) {
+  const html = await fetchText(chapterUrl, options, source.charset || 'auto');
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 

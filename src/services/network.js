@@ -81,7 +81,9 @@ export async function fetchText(url, options = {}, expectedCharset = 'auto') {
           'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 Chrome/116.0.0.0 Mobile Safari/537.36',
           ...options.headers
         },
-        responseType: 'arraybuffer'
+        responseType: 'arraybuffer',
+        connectTimeout: options.timeout || 15000,
+        readTimeout: options.timeout || 15000
       });
       return decodeBuffer(response.data, expectedCharset);
     } catch (err) {
