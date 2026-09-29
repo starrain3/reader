@@ -40,9 +40,19 @@ class ReaderViewController {
     this.isTextPanelVisible = false;
     this.fontSizeSlider = null;
     this.fontSizeValEl = null;
-    this.customColorInput = null;
-    this.customColorLabel = null;
+    this.customColorBtn = null;
     this.customColorContainer = null;
+    this.inlineColorPicker = null;
+    this.pickerHue = null;
+    this.pickerLight = null;
+    this.pickerPreviewBadge = null;
+    this.pickerHexInput = null;
+    this.pickerBtnSave = null;
+    this.pickerBtnCancel = null;
+    this.isInlinePickerVisible = false;
+    this.pickerCurrentH = 0;
+    this.pickerCurrentS = 60;
+    this.pickerCurrentL = 50;
     this.isDownloading = false;
     this.cancelDownloadFlag = false;
 
@@ -78,9 +88,15 @@ class ReaderViewController {
     this.textPanel = document.getElementById('reader-text-panel');
     this.fontSizeSlider = document.getElementById('reader-font-size-slider');
     this.fontSizeValEl = document.getElementById('text-panel-font-size-val');
-    this.customColorInput = document.getElementById('reader-custom-color-input');
-    this.customColorLabel = document.getElementById('reader-custom-color-label');
+    this.customColorBtn = document.getElementById('reader-custom-color-btn');
     this.customColorContainer = document.getElementById('custom-color-pills');
+    this.inlineColorPicker = document.getElementById('inline-color-picker');
+    this.pickerHue = document.getElementById('picker-hue');
+    this.pickerLight = document.getElementById('picker-light');
+    this.pickerPreviewBadge = document.getElementById('picker-preview-badge');
+    this.pickerHexInput = document.getElementById('picker-hex-input');
+    this.pickerBtnSave = document.getElementById('picker-btn-save');
+    this.pickerBtnCancel = document.getElementById('picker-btn-cancel');
 
     // 載入偏好設定
     this.fontSize = await getSetting('reader_font_size', 18);
@@ -101,6 +117,7 @@ class ReaderViewController {
     this.renderCustomColorPills();
     this.applyTheme(this.theme);
     this.applyTypography();
+    this.syncCustomColorInputValue();
     this.updateWakeLockUI();
     this.bindEvents();
     this.startClock();
@@ -253,25 +270,36 @@ class ReaderViewController {
       this.setTextColor(null);
     });
 
-    // 自訂顏色：點開取色盤前先同步為當前內文文字顏色
-    const syncColorPickerValue = () => {
-      this.prepareCustomColorPicker();
-    };
-    this.customColorLabel?.addEventListener('pointerdown', syncColorPickerValue);
-    this.customColorLabel?.addEventListener('click', syncColorPickerValue);
-
-    // 自訂文字顏色：拖曳調色時即時預覽內文效果
-    this.customColorInput?.addEventListener('input', (e) => {
-      if (e.target.value) {
-        this.setTextColor(e.target.value, false);
-      }
+    // 點擊 🎨 按鈕：直接就地展開/收合內建調色盤
+    this.customColorBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.toggleInlineColorPicker();
     });
 
-    // 自訂文字顏色：選定確定後加入常用自訂顏色並記住
-    this.customColorInput?.addEventListener('change', (e) => {
-      if (e.target.value) {
-        this.addCustomColor(e.target.value);
+    // 內建調色盤滑桿滑動（色相、明暗）：即時計算 Hex 並套用至內文
+    const handleSliderChange = () => {
+      this.onInlinePickerSliderChange();
+    };
+    this.pickerHue?.addEventListener('input', handleSliderChange);
+    this.pickerLight?.addEventListener('input', handleSliderChange);
+
+    // 內建調色盤手動輸入 HEX 色碼
+    this.pickerHexInput?.addEventListener('input', (e) => {
+      this.onInlinePickerHexInput(e.target.value.trim());
+    });
+
+    // 內建調色盤「確定儲存」按鈕
+    this.pickerBtnSave?.addEventListener('click', () => {
+      const hex = this.pickerHexInput ? this.pickerHexInput.value.trim() : '';
+      if (hex) {
+        this.addCustomColor(hex);
       }
+      this.hideInlineColorPicker();
+    });
+
+    // 內建調色盤「關閉」按鈕
+    this.pickerBtnCancel?.addEventListener('click', () => {
+      this.hideInlineColorPicker();
     });
 
     // 繁簡切換
@@ -349,6 +377,8 @@ class ReaderViewController {
     document.querySelectorAll('.theme-pill').forEach((pill) => {
       pill.classList.toggle('selected', pill.dataset.theme === themeName);
     });
+
+    this.syncCustomColorInputValue();
   }
 
   applyTypography() {
@@ -368,6 +398,7 @@ class ReaderViewController {
 
     this.updateColorPaletteUI();
     this.updateFontWeightUI();
+    this.syncCustomColorInputValue();
   }
 
   setFontSize(size) {
@@ -398,19 +429,6 @@ class ReaderViewController {
   }
 
   getCurrentTextColorHex() {
-    if (this.textColor && /^#[0-9a-fA-F]{6}$/i.test(this.textColor)) {
-      return this.textColor;
-    }
-    if (this.contentBox) {
-      const computed = window.getComputedStyle(this.contentBox).color;
-      const match = computed ? computed.match(/\d+/g) : null;
-      if (match && match.length >= 3) {
-        const r = parseInt(match[0], 10).toString(16).padStart(2, '0');
-        const g = parseInt(match[1], 10).toString(16).padStart(2, '0');
-        const b = parseInt(match[2], 10).toString(16).padStart(2, '0');
-        return `#${r}${g}${b}`;
-      }
-    }
     const themeDefaultMap = {
       'theme-white': '#2b2b2b',
       'theme-green': '#1e3522',
@@ -418,13 +436,200 @@ class ReaderViewController {
       'theme-dark': '#cbd5e1',
       'theme-black': '#94a3b8'
     };
+
+    let color = this.textColor;
+    if (!color) {
+      color = themeDefaultMap[this.theme] || '#2b2b2b';
+    }
+
+    color = String(color).trim();
+
+    // 6 碼 Hex (#rrggbb)
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+      return color.toLowerCase();
+    }
+
+    // 3 碼 Hex (#rgb -> #rrggbb)
+    if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+      const r = color[1];
+      const g = color[2];
+      const b = color[3];
+      return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+    }
+
+    // rgb(r, g, b) 或 rgba(r, g, b, a)
+    const match = color.match(/\d+/g);
+    if (match && match.length >= 3) {
+      const r = Math.min(255, parseInt(match[0], 10)).toString(16).padStart(2, '0');
+      const g = Math.min(255, parseInt(match[1], 10)).toString(16).padStart(2, '0');
+      const b = Math.min(255, parseInt(match[2], 10)).toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`.toLowerCase();
+    }
+
+    // 後備 DOM 計算樣式
+    if (this.contentBox || this.viewEl) {
+      const computed = window.getComputedStyle(this.contentBox || this.viewEl).color;
+      const cMatch = computed ? computed.match(/\d+/g) : null;
+      if (cMatch && cMatch.length >= 3) {
+        const r = Math.min(255, parseInt(cMatch[0], 10)).toString(16).padStart(2, '0');
+        const g = Math.min(255, parseInt(cMatch[1], 10)).toString(16).padStart(2, '0');
+        const b = Math.min(255, parseInt(cMatch[2], 10)).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`.toLowerCase();
+      }
+    }
+
     return themeDefaultMap[this.theme] || '#2b2b2b';
   }
 
-  prepareCustomColorPicker() {
-    if (this.customColorInput) {
-      this.customColorInput.value = this.getCurrentTextColorHex();
+  hexToHsl(hex) {
+    let r = 0, g = 0, b = 0;
+    hex = String(hex).trim();
+    if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16) / 255;
+      g = parseInt(hex[2] + hex[2], 16) / 255;
+      b = parseInt(hex[3] + hex[3], 16) / 255;
+    } else if (hex.length >= 7) {
+      r = parseInt(hex.slice(1, 3), 16) / 255;
+      g = parseInt(hex.slice(3, 5), 16) / 255;
+      b = parseInt(hex.slice(5, 7), 16) / 255;
     }
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h = Math.round(h * 60);
+    }
+    return {
+      h: Math.round(h),
+      s: Math.round(s * 100),
+      l: Math.round(l * 100)
+    };
+  }
+
+  hslToHex(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+
+    if (0 <= h && h < 60) {
+      r = c; g = x; b = 0;
+    } else if (60 <= h && h < 120) {
+      r = x; g = c; b = 0;
+    } else if (120 <= h && h < 180) {
+      r = 0; g = c; b = x;
+    } else if (180 <= h && h < 240) {
+      r = 0; g = x; b = c;
+    } else if (240 <= h && h < 300) {
+      r = x; g = 0; b = c;
+    } else if (300 <= h && h <= 360) {
+      r = c; g = 0; b = x;
+    }
+
+    const toHex = (n) => {
+      const hex = Math.round((n + m) * 255).toString(16);
+      return hex.padStart(2, '0');
+    };
+
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toLowerCase();
+  }
+
+  toggleInlineColorPicker() {
+    if (this.isInlinePickerVisible) {
+      this.hideInlineColorPicker();
+    } else {
+      this.openInlineColorPicker();
+    }
+  }
+
+  openInlineColorPicker() {
+    if (!this.inlineColorPicker) return;
+    this.syncInlineColorPicker();
+    this.inlineColorPicker.style.display = 'flex';
+    this.isInlinePickerVisible = true;
+    this.customColorBtn?.classList.add('selected');
+  }
+
+  hideInlineColorPicker() {
+    if (!this.inlineColorPicker) return;
+    this.inlineColorPicker.style.display = 'none';
+    this.isInlinePickerVisible = false;
+    this.updateColorPaletteUI();
+  }
+
+  syncInlineColorPicker() {
+    const currentHex = this.getCurrentTextColorHex();
+    const hsl = this.hexToHsl(currentHex);
+    this.pickerCurrentH = hsl.h;
+    this.pickerCurrentS = hsl.s > 15 ? hsl.s : 60;
+    this.pickerCurrentL = hsl.l;
+
+    if (this.pickerHue) this.pickerHue.value = this.pickerCurrentH;
+    if (this.pickerLight) {
+      this.pickerLight.value = this.pickerCurrentL;
+      this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${this.pickerCurrentH}, ${this.pickerCurrentS}%, 50%), #fff)`;
+    }
+    if (this.pickerHexInput) this.pickerHexInput.value = currentHex.toUpperCase();
+    if (this.pickerPreviewBadge) this.pickerPreviewBadge.style.backgroundColor = currentHex;
+  }
+
+  onInlinePickerSliderChange() {
+    if (this.pickerHue) {
+      this.pickerCurrentH = parseInt(this.pickerHue.value, 10);
+    }
+    if (this.pickerLight) {
+      this.pickerCurrentL = parseInt(this.pickerLight.value, 10);
+    }
+    if (this.pickerCurrentS < 20) {
+      this.pickerCurrentS = 60;
+    }
+    const hex = this.hslToHex(this.pickerCurrentH, this.pickerCurrentS, this.pickerCurrentL);
+    if (this.pickerHexInput) this.pickerHexInput.value = hex.toUpperCase();
+    if (this.pickerPreviewBadge) this.pickerPreviewBadge.style.backgroundColor = hex;
+    if (this.pickerLight) {
+      this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${this.pickerCurrentH}, ${this.pickerCurrentS}%, 50%), #fff)`;
+    }
+    this.setTextColor(hex, false);
+  }
+
+  onInlinePickerHexInput(val) {
+    if (!val) return;
+    if (!val.startsWith('#')) val = '#' + val;
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      const hex = val.toLowerCase();
+      const hsl = this.hexToHsl(hex);
+      this.pickerCurrentH = hsl.h;
+      this.pickerCurrentS = hsl.s > 15 ? hsl.s : 60;
+      this.pickerCurrentL = hsl.l;
+      if (this.pickerHue) this.pickerHue.value = this.pickerCurrentH;
+      if (this.pickerLight) {
+        this.pickerLight.value = this.pickerCurrentL;
+        this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${this.pickerCurrentH}, ${this.pickerCurrentS}%, 50%), #fff)`;
+      }
+      if (this.pickerPreviewBadge) this.pickerPreviewBadge.style.backgroundColor = hex;
+      this.setTextColor(hex, false);
+    }
+  }
+
+  syncCustomColorInputValue() {
+    if (this.isInlinePickerVisible) {
+      this.syncInlineColorPicker();
+    }
+  }
+
+  prepareCustomColorPicker() {
+    this.syncInlineColorPicker();
   }
 
   async addCustomColor(color) {
@@ -485,6 +690,9 @@ class ReaderViewController {
     this.textColor = color;
     saveSetting('reader_font_color', color);
     this.applyTypography();
+    if (this.isInlinePickerVisible) {
+      this.syncInlineColorPicker();
+    }
     if (notify) {
       if (color) {
         showToast('文字顏色已變更');
@@ -498,6 +706,9 @@ class ReaderViewController {
     this.isTextPanelVisible = !this.isTextPanelVisible;
     if (this.textPanel) {
       this.textPanel.style.display = this.isTextPanelVisible ? 'block' : 'none';
+      if (!this.isTextPanelVisible) {
+        this.hideInlineColorPicker();
+      }
     }
     document.getElementById('btn-text-settings')?.classList.toggle('active', this.isTextPanelVisible);
   }
@@ -507,6 +718,7 @@ class ReaderViewController {
     if (this.textPanel) {
       this.textPanel.style.display = 'none';
     }
+    this.hideInlineColorPicker();
     document.getElementById('btn-text-settings')?.classList.remove('active');
   }
 
@@ -524,9 +736,9 @@ class ReaderViewController {
       if (selected) matched = true;
     });
 
-    const customBtn = document.getElementById('reader-custom-color-label') || document.querySelector('.color-custom-btn');
+    const customBtn = this.customColorBtn || document.getElementById('reader-custom-color-btn') || document.querySelector('.color-custom-btn');
     if (customBtn) {
-      customBtn.classList.toggle('selected', Boolean(current && !matched));
+      customBtn.classList.toggle('selected', Boolean(this.isInlinePickerVisible || (current && !matched)));
     }
   }
 

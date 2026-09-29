@@ -894,6 +894,109 @@ body {
 .color-custom-btn {
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
+  padding: 0;
+  outline: none;
+}
+
+/* 內建就地展開調色盤 */
+.inline-color-picker {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.picker-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 26px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.picker-slider {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.hue-slider {
+  background: linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+}
+
+.light-slider {
+  background: linear-gradient(to right, #000000 0%, #888888 50%, #ffffff 100%);
+}
+
+.picker-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #000000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+.picker-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #000000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+.color-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.color-preview-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+.picker-hex-input {
+  flex: 1;
+  height: 28px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.picker-hex-input:focus {
+  border-color: var(--primary-color);
+  outline: none;
 }
 
 /* 主題選擇色塊 */

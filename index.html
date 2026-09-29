@@ -373,10 +373,27 @@
               <div class="color-pill" data-color="#94a3b8" title="煙霧灰" style="background:#94a3b8;"></div>
               <div class="color-pill" data-color="#f8fafc" title="月牙白" style="background:#f8fafc;"></div>
               <div id="custom-color-pills" class="custom-color-pills"></div>
-              <label class="color-pill color-custom-btn" id="reader-custom-color-label" title="調色並新增喜歡的顏色" style="cursor:pointer;">
+              <button type="button" class="color-pill color-custom-btn" id="reader-custom-color-btn" title="自訂調色盤">
                 <span style="font-size:13px;">🎨</span>
-                <input type="color" id="reader-custom-color-input" style="opacity:0; position:absolute; width:1px; height:1px; pointer-events:none;" />
-              </label>
+              </button>
+            </div>
+
+            <!-- 內建就地展開調色盤 (完全免去原生選取介面) -->
+            <div id="inline-color-picker" class="inline-color-picker" style="display:none;">
+              <div class="color-picker-row">
+                <span class="picker-label">色相</span>
+                <input type="range" id="picker-hue" min="0" max="360" value="0" class="picker-slider hue-slider" />
+              </div>
+              <div class="color-picker-row">
+                <span class="picker-label">明暗</span>
+                <input type="range" id="picker-light" min="0" max="100" value="50" class="picker-slider light-slider" />
+              </div>
+              <div class="color-picker-actions">
+                <div class="color-preview-badge" id="picker-preview-badge"></div>
+                <input type="text" id="picker-hex-input" class="picker-hex-input" maxlength="7" placeholder="#000000" />
+                <button type="button" id="picker-btn-save" class="btn-sm btn-primary">確定儲存</button>
+                <button type="button" id="picker-btn-cancel" class="btn-sm btn-secondary">關閉</button>
+              </div>
             </div>
           </div>
         </div>
