@@ -517,7 +517,7 @@ class ReaderViewController {
 
   hexToHsl(hex) {
     let r = 0, g = 0, b = 0;
-    hex = String(hex).trim();
+    hex = String(hex || '').trim();
     if (hex.length === 4) {
       r = parseInt(hex[1] + hex[1], 16) / 255;
       g = parseInt(hex[2] + hex[2], 16) / 255;
@@ -527,8 +527,30 @@ class ReaderViewController {
       g = parseInt(hex.slice(3, 5), 16) / 255;
       b = parseInt(hex.slice(5, 7), 16) / 255;
     }
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+      return { h: 0, s: 60, l: 50 };
+    }
+
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h = Math.round(h * 60);
+    }
+    return {
+      h: Math.round(h),
+      s: Math.round(s * 100),
+      l: Math.round(l * 100)
+    };
   }
 
   hslToHex(h, s, l) {
@@ -586,7 +608,7 @@ class ReaderViewController {
 
   syncInlineColorPicker() {
     const currentHex = this.getCurrentTextColorHex();
-    const hsl = this.hexToHsl(currentHex);
+    const hsl = this.hexToHsl(currentHex) || { h: 0, s: 60, l: 50 };
     this.pickerCurrentH = hsl.h;
     this.pickerCurrentS = hsl.s > 15 ? hsl.s : 60;
     this.pickerCurrentL = hsl.l;
@@ -616,7 +638,7 @@ class ReaderViewController {
     if (this.pickerLight) {
       this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${this.pickerCurrentH}, ${this.pickerCurrentS}%, 50%), #fff)`;
     }
-    this.setTextColor(hex, false);
+    this.setTextColor(hex, false, false);
   }
 
   onInlinePickerHexInput(val) {
@@ -702,11 +724,11 @@ class ReaderViewController {
     this.updateColorPaletteUI();
   }
 
-  setTextColor(color, notify = true) {
+  setTextColor(color, notify = true, syncPicker = true) {
     this.textColor = color;
     saveSetting('reader_font_color', color);
     this.applyTypography();
-    if (this.isInlinePickerVisible) {
+    if (this.isInlinePickerVisible && syncPicker) {
       this.syncInlineColorPicker();
     }
     if (notify) {
