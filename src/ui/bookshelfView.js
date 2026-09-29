@@ -16,7 +16,9 @@ class BookshelfViewController {
     this.epubInput = null;
     this.isManaging = false;
     this.pendingDeleteBookId = null;
+    this.pendingDeleteBookTitle = '';
     this.deleteModal = null;
+    this.lastLongPressTime = 0;
   }
 
   init() {
@@ -83,6 +85,8 @@ class BookshelfViewController {
     });
 
     this.deleteModal?.addEventListener('click', (e) => {
+      // 若距長按觸發不到 450ms，忽略放開手指產生的幽靈點擊，避免彈窗立刻閃退
+      if (Date.now() - this.lastLongPressTime < 450) return;
       if (e.target === this.deleteModal) {
         this.closeDeleteModal();
       }
@@ -157,14 +161,34 @@ class BookshelfViewController {
       const bookId = card.dataset.id;
       let longPressTimer = null;
       let isLongPressTriggered = false;
+      let touchStartX = 0;
+      let touchStartY = 0;
 
       // 長按事件支援 (行動裝置與滑鼠長按 500ms 喚起刪除)
-      const startLongPress = () => {
+      const startLongPress = (e) => {
+        if (e.touches && e.touches.length > 1) return;
+        if (e.touches && e.touches[0]) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
         isLongPressTriggered = false;
         longPressTimer = setTimeout(() => {
           isLongPressTriggered = true;
+          this.lastLongPressTime = Date.now();
           this.showDeleteModal(bookId);
         }, 500);
+      };
+
+      const handleTouchMove = (e) => {
+        if (!longPressTimer) return;
+        if (e.touches && e.touches[0]) {
+          const dx = Math.abs(e.touches[0].clientX - touchStartX);
+          const dy = Math.abs(e.touches[0].clientY - touchStartY);
+          // 滑動位移超過 10px 判定為瀏覽翻頁，取消長按
+          if (dx > 10 || dy > 10) {
+            cancelLongPress();
+          }
+        }
       };
 
       const cancelLongPress = () => {
@@ -176,13 +200,13 @@ class BookshelfViewController {
 
       card.addEventListener('touchstart', startLongPress, { passive: true });
       card.addEventListener('touchend', cancelLongPress);
-      card.addEventListener('touchmove', cancelLongPress);
+      card.addEventListener('touchmove', handleTouchMove, { passive: true });
       card.addEventListener('mousedown', startLongPress);
       card.addEventListener('mouseup', cancelLongPress);
       card.addEventListener('mouseleave', cancelLongPress);
 
       card.addEventListener('click', (e) => {
-        if (isLongPressTriggered) {
+        if (isLongPressTriggered || (Date.now() - this.lastLongPressTime < 450)) {
           isLongPressTriggered = false;
           return;
         }
@@ -201,12 +225,14 @@ class BookshelfViewController {
       // 管理模式下的紅色刪除徽章
       card.querySelector('.btn-card-delete-badge')?.addEventListener('click', (e) => {
         e.stopPropagation();
+        cancelLongPress();
         this.showDeleteModal(bookId);
       });
 
       // 卡片右下角的垃圾桶刪除按鈕
       card.querySelector('.btn-book-delete')?.addEventListener('click', (e) => {
         e.stopPropagation();
+        cancelLongPress();
         this.showDeleteModal(bookId);
       });
     });
@@ -227,17 +253,20 @@ class BookshelfViewController {
       ? `<button class="btn-card-delete-badge" title="刪除此書" data-id="${book.id}">✕</button>`
       : `<span class="book-badge">${book.sourceName || '本地'}</span>`;
 
+    // 管理模式下僅顯示右上角 ✕ 徽章，避免右下角重複出現垃圾桶圖示；一般模式下顯示垃圾桶刪除按鈕
+    const actionBtnHtml = this.isManaging
+      ? `<div style="width:24px; height:24px;"></div>`
+      : `<button class="btn-book-delete" title="刪除書籍" data-id="${book.id}">🗑️</button>`;
+
     return `
       <div class="book-card ${this.isManaging ? 'is-managing' : ''}" data-id="${book.id}">
         ${coverHtml}
         ${badgeHtml}
         <div class="book-info">
-          <div class="book-name">${title}</div>
+          <div class="book-name" title="${title}">${title}</div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div class="book-progress">${progress}% · ${author}</div>
-            <button class="btn-book-delete" title="刪除書籍" data-id="${book.id}">
-              🗑️
-            </button>
+            ${actionBtnHtml}
           </div>
         </div>
       </div>
@@ -246,9 +275,14 @@ class BookshelfViewController {
 
   async showDeleteModal(bookId) {
     const book = await getBook(bookId);
-    if (!book) return;
+    if (!book) {
+      console.warn(`[Bookshelf] 找不到欲刪除的書籍 ID: ${bookId}`);
+      showToast('找不到該書籍資料');
+      return;
+    }
 
-    this.pendingDeleteBookId = bookId;
+    this.pendingDeleteBookId = book.id;
+    this.pendingDeleteBookTitle = book.title;
     const titleEl = document.getElementById('delete-modal-book-title');
     if (titleEl) {
       titleEl.textContent = `《${convertToTraditional(book.title)}》`;
@@ -260,6 +294,7 @@ class BookshelfViewController {
 
   closeDeleteModal() {
     this.pendingDeleteBookId = null;
+    this.pendingDeleteBookTitle = '';
     if (this.deleteModal) {
       this.deleteModal.style.display = 'none';
     }
@@ -268,8 +303,7 @@ class BookshelfViewController {
   async confirmDeleteBook() {
     if (!this.pendingDeleteBookId) return;
     const bookId = this.pendingDeleteBookId;
-    const book = await getBook(bookId);
-    const title = book ? book.title : '';
+    const title = this.pendingDeleteBookTitle || '';
     this.closeDeleteModal();
 
     try {

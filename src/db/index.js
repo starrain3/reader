@@ -78,11 +78,45 @@ export async function getAllBooks() {
 }
 
 export async function getBook(id) {
+  if (id === null || id === undefined || id === '') {
+    return Promise.resolve(null);
+  }
+
   const store = await getStore('books');
   return new Promise((resolve, reject) => {
+    // 1. 第一步：嘗試以傳入之原始 id 查詢
     const request = store.get(id);
-    request.onsuccess = () => resolve(request.result || null);
+    request.onsuccess = () => {
+      if (request.result) return resolve(request.result);
+
+      // 2. 第二步：若未找到，嘗試字串與數值型別互轉查詢
+      const isNum = !isNaN(Number(id)) && String(id).trim() !== '';
+      const altId = isNum ? Number(id) : String(id);
+
+      if (altId !== id) {
+        const reqAlt = store.get(altId);
+        reqAlt.onsuccess = () => {
+          if (reqAlt.result) return resolve(reqAlt.result);
+          // 3. 第三步：兜底遍歷查詢 (保證任何特殊格式或舊版資料 100% 命中)
+          fallbackScan();
+        };
+        reqAlt.onerror = () => fallbackScan();
+      } else {
+        fallbackScan();
+      }
+    };
     request.onerror = () => reject(request.error);
+
+    // 兜底掃描輔助函數
+    function fallbackScan() {
+      const allReq = store.getAll();
+      allReq.onsuccess = () => {
+        const books = allReq.result || [];
+        const found = books.find((b) => b && (b.id == id || String(b.id) === String(id)));
+        resolve(found || null);
+      };
+      allReq.onerror = () => resolve(null);
+    }
   });
 }
 
@@ -97,24 +131,77 @@ export async function saveBook(book) {
 }
 
 export async function deleteBook(id) {
+  if (id === null || id === undefined || id === '') {
+    return Promise.resolve(false);
+  }
+
   const db = await openDB();
   const tx = db.transaction(['books', 'chapters'], 'readwrite');
-  
-  // 刪除書籍本體
-  tx.objectStore('books').delete(id);
-  
-  // 刪除該書籍的所有章節快取
+  const bookStore = tx.objectStore('books');
   const chapterStore = tx.objectStore('chapters');
-  const index = chapterStore.index('bookId');
-  const request = index.getAllKeys(id);
-  
+
+  // 1. 刪除書籍主表記錄 (同時嘗試原始 ID、字串型別與數值型別)
+  bookStore.delete(id);
+  const isNum = !isNaN(Number(id)) && String(id).trim() !== '';
+  if (isNum) {
+    bookStore.delete(Number(id));
+  }
+  bookStore.delete(String(id));
+
+  // 2. 收集需要清理的章節 bookId 鍵值
+  const targetIds = [id];
+  if (isNum && Number(id) !== id) targetIds.push(Number(id));
+  if (String(id) !== id) targetIds.push(String(id));
+
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => {
-      const keys = request.result || [];
-      keys.forEach((key) => chapterStore.delete(key));
-    };
+    // 檢查章節表是否存在 'bookId' 索引 (相容舊版或異常 Schema)
+    if (chapterStore.indexNames.contains('bookId')) {
+      const index = chapterStore.index('bookId');
+      let pendingQueries = targetIds.length;
+      const allKeysToDelete = new Set();
+
+      targetIds.forEach((queryId) => {
+        const req = index.getAllKeys(queryId);
+        req.onsuccess = () => {
+          (req.result || []).forEach((k) => allKeysToDelete.add(k));
+          pendingQueries--;
+          if (pendingQueries === 0) {
+            for (const key of allKeysToDelete) {
+              chapterStore.delete(key);
+            }
+          }
+        };
+        req.onerror = () => {
+          pendingQueries--;
+          if (pendingQueries === 0) {
+            for (const key of allKeysToDelete) {
+              chapterStore.delete(key);
+            }
+          }
+        };
+      });
+    } else {
+      // 若無 bookId 索引，透過 Cursor 兜底遍歷比對刪除
+      const cursorReq = chapterStore.openCursor();
+      cursorReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const rec = cursor.value;
+          const keyStr = String(cursor.key);
+          const isMatch = (rec && (rec.bookId == id || String(rec.bookId) === String(id))) ||
+                          keyStr.startsWith(`${id}_`);
+          if (isMatch) {
+            cursor.delete();
+          }
+          cursor.continue();
+        }
+      };
+      cursorReq.onerror = () => {};
+    }
+
     tx.oncomplete = () => resolve(true);
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
   });
 }
 
