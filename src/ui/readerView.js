@@ -43,6 +43,10 @@ class ReaderViewController {
     this.isDownloading = false;
     this.cancelDownloadFlag = false;
 
+    // 螢幕常亮 (Screen Wake Lock) 狀態
+    this.wakeLockSentinel = null;
+    this.wakeLockEnabled = true;
+
     // 連續滾動章節狀態
     this.renderedChapters = new Map();
     this.lowestRenderedIndex = 0;
@@ -80,14 +84,21 @@ class ReaderViewController {
     this.theme = await getSetting('reader_theme', 'theme-parchment');
     this.openccEnabled = await getSetting('reader_opencc', true);
     this.textColor = await getSetting('reader_font_color', null);
+    this.wakeLockEnabled = await getSetting('reader_wake_lock', true);
 
     if (this.fontSizeSlider) this.fontSizeSlider.value = this.fontSize;
     if (this.fontSizeValEl) this.fontSizeValEl.textContent = `${this.fontSize}px`;
 
     this.applyTheme(this.theme);
     this.applyTypography();
+    this.updateWakeLockUI();
     this.bindEvents();
     this.startClock();
+
+    // 監聽頁面能見度 (Visibility Change)，切換回 App 時若處於閱讀介面則自動恢復螢幕常亮
+    document.addEventListener('visibilitychange', () => {
+      this.handleVisibilityChange();
+    });
   }
 
   bindEvents() {
@@ -245,6 +256,14 @@ class ReaderViewController {
       openccBtn.classList.toggle('active', this.openccEnabled);
       this.renderAllRenderedChapters();
       showToast(this.openccEnabled ? '已切換為：繁體模式' : '已切換為：原始文字');
+    });
+
+    // 螢幕常亮 (防止關閉) 開關按鈕 (底部控制列 & 頂部工具列)
+    document.getElementById('btn-toggle-wakelock')?.addEventListener('click', () => {
+      this.toggleWakeLock();
+    });
+    document.getElementById('reader-btn-wakelock')?.addEventListener('click', () => {
+      this.toggleWakeLock();
     });
 
     // 主題選擇按鈕
@@ -450,6 +469,11 @@ class ReaderViewController {
     this.applyTheme(this.theme);
     this.hideMenu();
 
+    // 啟動螢幕常亮 (若使用者偏好設定為開啟)
+    if (this.wakeLockEnabled) {
+      this.requestWakeLock();
+    }
+
     // 更新進度條最大值
     if (this.slider && book.chapters) {
       this.slider.max = Math.max(0, book.chapters.length - 1);
@@ -464,6 +488,7 @@ class ReaderViewController {
     this.persistReadingProgress();
     this.cancelDownload();
     this.closeDownloadModal();
+    this.releaseWakeLock();
     this.currentBook = null;
     tts.stop();
     this.hideTTS();
@@ -1458,6 +1483,128 @@ class ReaderViewController {
     } catch (err) {
       console.error('匯出 TXT 失敗:', err);
       showToast(`匯出失敗: ${err.message}`);
+    }
+  }
+
+  // ==========================================================================
+  // 螢幕常亮 (Screen Wake Lock) 控制功能
+  // ==========================================================================
+
+  /**
+   * 請求螢幕常亮鎖定 (Screen Wake Lock)
+   * 確保在閱讀介面下，螢幕不會自動變暗或進入休眠
+   */
+  async requestWakeLock() {
+    if (!('wakeLock' in navigator)) {
+      this.updateWakeLockUI();
+      return false;
+    }
+
+    if (this.wakeLockSentinel && !this.wakeLockSentinel.released) {
+      this.updateWakeLockUI();
+      return true;
+    }
+
+    try {
+      this.wakeLockSentinel = await navigator.wakeLock.request('screen');
+      this.wakeLockSentinel.addEventListener('release', () => {
+        this.wakeLockSentinel = null;
+        this.updateWakeLockUI();
+      });
+      this.updateWakeLockUI();
+      return true;
+    } catch (err) {
+      console.warn('[WakeLock] 請求螢幕常亮失敗:', err);
+      this.wakeLockSentinel = null;
+      this.updateWakeLockUI();
+      return false;
+    }
+  }
+
+  /**
+   * 釋放螢幕常亮鎖定
+   */
+  async releaseWakeLock() {
+    if (this.wakeLockSentinel) {
+      try {
+        await this.wakeLockSentinel.release();
+      } catch (err) {
+        console.warn('[WakeLock] 釋放螢幕常亮失敗:', err);
+      }
+      this.wakeLockSentinel = null;
+    }
+    this.updateWakeLockUI();
+  }
+
+  /**
+   * 切換螢幕常亮功能開關 (Toggle)
+   */
+  async toggleWakeLock() {
+    if (!('wakeLock' in navigator)) {
+      showToast('您的瀏覽器不支援螢幕常亮功能 (Wake Lock API)');
+      return;
+    }
+
+    this.wakeLockEnabled = !this.wakeLockEnabled;
+    await saveSetting('reader_wake_lock', this.wakeLockEnabled);
+
+    if (this.wakeLockEnabled) {
+      const success = await this.requestWakeLock();
+      if (success) {
+        showToast('已開啟螢幕常亮（閱讀中不關閉螢幕）');
+      } else {
+        showToast('無法取得螢幕常亮（可能處於系統省電模式）');
+      }
+    } else {
+      await this.releaseWakeLock();
+      showToast('已關閉螢幕常亮');
+    }
+
+    this.updateWakeLockUI();
+  }
+
+  /**
+   * 更新螢幕常亮相關 UI 控制項狀態
+   */
+  updateWakeLockUI() {
+    const bottomBtn = document.getElementById('btn-toggle-wakelock');
+    const topBtn = document.getElementById('reader-btn-wakelock');
+    const isSupported = 'wakeLock' in navigator;
+
+    if (bottomBtn) {
+      bottomBtn.classList.toggle('active', this.wakeLockEnabled);
+      if (!isSupported) {
+        bottomBtn.title = '此瀏覽器不支援螢幕常亮功能';
+      } else {
+        bottomBtn.title = this.wakeLockEnabled ? '螢幕常亮：已開啟（點擊關閉）' : '螢幕常亮：已關閉（點擊開啟）';
+      }
+    }
+
+    if (topBtn) {
+      topBtn.classList.toggle('active', this.wakeLockEnabled);
+      if (!isSupported) {
+        topBtn.title = '此瀏覽器不支援螢幕常亮功能';
+      } else {
+        topBtn.title = this.wakeLockEnabled ? '螢幕常亮：已開啟（點擊關閉）' : '螢幕常亮：已關閉（點擊開啟）';
+      }
+    }
+  }
+
+  /**
+   * 處理瀏覽器可見度變動 (頁面切換或 App 回到前景)
+   */
+  async handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      // 若回到頁面、正在閱讀中且使用者開啟了螢幕常亮，重新申請鎖定
+      if (this.currentBook && this.wakeLockEnabled) {
+        await this.requestWakeLock();
+      }
+    } else {
+      // 頁面進入背景時，瀏覽器會自動釋放，我們同步清理 reference
+      if (this.wakeLockSentinel) {
+        this.wakeLockSentinel = null;
+        this.updateWakeLockUI();
+      }
     }
   }
 }

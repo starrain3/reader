@@ -278,6 +278,19 @@
         </button>
         <div id="reader-bar-title" class="reader-bar-title">載入中...</div>
         <div style="display:flex; gap:10px; align-items:center;">
+          <button id="reader-btn-wakelock" style="background:none; border:none; color:#fff; cursor:pointer;" title="螢幕常亮 / 防止休眠">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </button>
           <button id="reader-btn-download" style="background:none; border:none; color:#fff; cursor:pointer;" title="下載/離線快取">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -371,6 +384,20 @@
         <div class="reader-control-grid">
           <button id="btn-text-settings" class="control-btn"><span>Aa</span><span>文字設定</span></button>
           <button id="btn-toggle-opencc" class="control-btn active"><span>繁 / 簡</span><span>繁體轉換</span></button>
+          <button id="btn-toggle-wakelock" class="control-btn active" title="螢幕常亮（閱讀中不休眠）">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <span>螢幕常亮</span>
+          </button>
           <button id="reader-btn-drawer-trigger" class="control-btn" onclick="document.getElementById('reader-btn-toc').click()"><span>📑</span><span>章節目錄</span></button>
         </div>
 
