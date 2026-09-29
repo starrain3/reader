@@ -1,12 +1,14 @@
 // Service Worker for 隨身小說閱讀器 (Ku Reader)
-const CACHE_NAME = 'ku-reader-cache-v2.2';
+const CACHE_NAME = 'ku-reader-cache-v2.3';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './apple-touch-icon.png',
+  './favicon.ico'
 ];
 
 /**
