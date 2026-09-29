@@ -9,9 +9,13 @@ import { searchView } from './ui/searchView.js';
 import { sourcesView } from './ui/sourcesView.js';
 import { settingsView } from './ui/settingsView.js';
 import { readerView } from './ui/readerView.js';
+import { initPwaManager } from './services/pwaManager.js';
 
 async function initApp() {
   console.log('正在啟動隨身小說閱讀器...');
+
+  // 初始化 PWA 離線快取與更新進度管理器
+  initPwaManager();
 
   // 1. 初始化預設書源
   await initDefaultSources();

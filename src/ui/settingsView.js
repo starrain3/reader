@@ -6,6 +6,7 @@
 import { getSetting, saveSetting, openDB, getAllBooks } from '../db/index.js';
 import { testCloudflareWorker } from '../services/network.js';
 import { showToast } from './toast.js';
+import { checkForUpdates } from '../services/pwaManager.js';
 
 class SettingsViewController {
   constructor() {
@@ -112,6 +113,23 @@ export default {
       navigator.clipboard.writeText(code).then(() => {
         showToast('已複製 Cloudflare Worker 程式碼！');
       });
+    });
+
+    // 手動檢查 PWA 更新
+    document.getElementById('btn-check-update')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-check-update');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '正在檢查更新...';
+      }
+      try {
+        await checkForUpdates();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔍 檢查最新版本';
+        }
+      }
     });
   }
 

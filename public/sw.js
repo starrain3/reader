@@ -1,6 +1,6 @@
 // Service Worker for 隨身小說閱讀器 (Ku Reader)
-const CACHE_NAME = 'ku-reader-cache-v2';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'ku-reader-cache-v2.1';
+const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
@@ -9,20 +9,95 @@ const STATIC_ASSETS = [
   './icon-512.png'
 ];
 
+/**
+ * 向所有當前活躍的客戶端 (Window Clients) 廣播訊息
+ */
+async function broadcastToClients(data) {
+  try {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      client.postMessage(data);
+    }
+  } catch (err) {
+    console.warn('[SW] broadcastToClients 發生錯誤:', err);
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      // 容錯快取機制：逐一快取靜態資源，避免單個檔案異常導致 install 失敗
-      for (const asset of STATIC_ASSETS) {
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const assetsToCache = new Set(CORE_ASSETS);
+
+      // 動態分析 index.html 中的打包資產（如 Vite 編譯出的 CSS / JS 檔案路徑）
+      try {
+        const indexResp = await fetch('./index.html', { cache: 'reload' });
+        if (indexResp.ok) {
+          const htmlText = await indexResp.text();
+          // 將最新 index.html 寫入快取
+          await cache.put('./index.html', new Response(htmlText, {
+            headers: indexResp.headers,
+            status: indexResp.status,
+            statusText: indexResp.statusText
+          }));
+
+          // 抓取 HTML 中的 script src 和 link href
+          const srcMatches = [...htmlText.matchAll(/src=["'](\.\/assets\/[^"']+)["']/g)];
+          const hrefMatches = [...htmlText.matchAll(/href=["'](\.\/assets\/[^"']+)["']/g)];
+
+          srcMatches.forEach((m) => assetsToCache.add(m[1]));
+          hrefMatches.forEach((m) => assetsToCache.add(m[1]));
+        }
+      } catch (err) {
+        console.warn('[SW] 動態解析 index.html 資產失敗，將使用預設靜態清單:', err);
+      }
+
+      const assetList = Array.from(assetsToCache);
+      const total = assetList.length;
+      let loaded = 0;
+
+      // 1. 廣播更新開始
+      await broadcastToClients({
+        type: 'SW_UPDATE_START',
+        total
+      });
+
+      // 2. 逐一下載快取資源，並即時廣播進度
+      for (const asset of assetList) {
         try {
-          await cache.add(asset);
+          if (asset !== './index.html') {
+            const resp = await fetch(asset, { cache: 'reload' });
+            if (resp.ok) {
+              await cache.put(asset, resp);
+            }
+          }
         } catch (err) {
           console.warn('[SW] 快取靜態資源警告:', asset, err);
         }
+        loaded++;
+
+        await broadcastToClients({
+          type: 'SW_UPDATE_PROGRESS',
+          loaded,
+          total,
+          percent: Math.round((loaded / total) * 100),
+          file: asset
+        });
       }
-    })
+
+      // 3. 廣播更新下載完成
+      await broadcastToClients({
+        type: 'SW_UPDATE_COMPLETE'
+      });
+    })()
   );
-  self.skipWaiting();
+});
+
+// 監聽前端發送的控制指令 (例如 SKIP_WAITING)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
