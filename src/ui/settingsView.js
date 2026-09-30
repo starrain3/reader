@@ -3,7 +3,7 @@
  * 負責網路代理 (CORS Proxy)、快取清理、PWA 安裝指引與 Cloudflare Worker 部署說明
  */
 
-import { getSetting, saveSetting, openDB, getAllBooks } from '../db/index.js';
+import { getSetting, saveSetting, openDB, getAllBooks, getStorageDetailedStats } from '../db/index.js';
 import { testCloudflareWorker } from '../services/network.js';
 import { showToast } from './toast.js';
 import { checkForUpdates, forceUpdateApp } from '../services/pwaManager.js';
@@ -73,6 +73,23 @@ class SettingsViewController {
       }
     });
 
+    // 手動重新整理儲存容量統計
+    const refreshBtn = document.getElementById('btn-refresh-storage');
+    const refreshIcon = document.getElementById('btn-refresh-storage-icon');
+    refreshBtn?.addEventListener('click', async () => {
+      if (refreshIcon) refreshIcon.style.transform = 'rotate(360deg)';
+      if (refreshBtn) refreshBtn.disabled = true;
+      try {
+        await this.updateStorageStats();
+        showToast('已更新儲存空間統計！');
+      } finally {
+        setTimeout(() => {
+          if (refreshIcon) refreshIcon.style.transform = 'none';
+          if (refreshBtn) refreshBtn.disabled = false;
+        }, 400);
+      }
+    });
+
     // 清理章節快取
     this.clearCacheBtn?.addEventListener('click', async () => {
       if (confirm('確定要清空所有已下載的章節文字嗎？（書架與書籍進度仍會保留）')) {
@@ -81,7 +98,9 @@ class SettingsViewController {
         tx.objectStore('chapters').clear();
         tx.oncomplete = () => {
           showToast('已成功釋放章節快取空間！');
-          this.updateStorageStats();
+          setTimeout(() => {
+            this.updateStorageStats();
+          }, 300);
         };
       }
     });
@@ -212,13 +231,66 @@ export default {
 
   async updateStorageStats() {
     try {
-      const books = await getAllBooks();
-      const statsEl = document.getElementById('settings-storage-stats');
-      if (statsEl) {
-        statsEl.textContent = `書架目前收錄: ${books.length} 本書籍`;
+      const stats = await getStorageDetailedStats();
+
+      const totalEl = document.getElementById('settings-storage-total');
+      const quotaEl = document.getElementById('settings-storage-quota');
+      const barEl = document.getElementById('settings-storage-bar');
+      const idbEl = document.getElementById('settings-stat-idb-size');
+      const cacheEl = document.getElementById('settings-stat-cache-size');
+      const booksEl = document.getElementById('settings-stat-books');
+      const chaptersEl = document.getElementById('settings-stat-chapters');
+      const legacyStatsEl = document.getElementById('settings-storage-stats');
+
+      if (totalEl) {
+        totalEl.textContent = stats.formattedTotal;
       }
-    } catch {
-      // 靜默
+
+      if (quotaEl) {
+        if (stats.formattedQuota) {
+          const pctStr = stats.percent < 0.01 && stats.totalUsage > 0 ? '< 0.01%' : `${stats.percent.toFixed(2)}%`;
+          quotaEl.textContent = `可用配額：約 ${stats.formattedQuota} (已使用 ${pctStr})`;
+        } else {
+          quotaEl.textContent = '系統無特定儲存上限限制';
+        }
+      }
+
+      if (barEl) {
+        const visualWidth = Math.max(stats.percent > 0 ? 1 : 0, Math.min(100, stats.percent));
+        barEl.style.width = `${visualWidth}%`;
+      }
+
+      if (idbEl) {
+        if (stats.formattedIndexedDB) {
+          idbEl.textContent = stats.formattedIndexedDB;
+        } else if (stats.totalUsage > 0) {
+          idbEl.textContent = stats.formattedTotal;
+        } else {
+          idbEl.textContent = '0 B';
+        }
+      }
+
+      if (cacheEl) {
+        if (stats.formattedCache) {
+          cacheEl.textContent = stats.formattedCache;
+        } else {
+          cacheEl.textContent = '未分項';
+        }
+      }
+
+      if (booksEl) {
+        booksEl.textContent = `${stats.bookCount} 本`;
+      }
+
+      if (chaptersEl) {
+        chaptersEl.textContent = `${stats.chapterCount} 章`;
+      }
+
+      if (legacyStatsEl) {
+        legacyStatsEl.textContent = `書架收錄: ${stats.bookCount} 本書籍 · 已快取: ${stats.chapterCount} 個章節 · 總佔用: ${stats.formattedTotal}`;
+      }
+    } catch (err) {
+      console.warn('[Settings] 更新儲存空間統計出錯:', err);
     }
   }
 }

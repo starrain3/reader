@@ -1,6 +1,6 @@
 // Service Worker for 隨身小說閱讀器 (Ku Reader)
 // 快取分層架構：應用程式代碼與靜態資源分開管理
-const APP_CACHE_NAME = 'ku-reader-app-v2.9';
+const APP_CACHE_NAME = 'ku-reader-app-v3.0';
 const STATIC_CACHE_NAME = 'ku-reader-static-v1.0';
 
 // 幾乎不變更的靜態圖示與外觀資源（獨立快取庫，版本不變即永久重用）

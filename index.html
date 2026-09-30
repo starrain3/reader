@@ -129,12 +129,55 @@
 
         <!-- 本地儲存與快取管理 -->
         <div style="background:var(--surface-color); border:1px solid var(--surface-border); border-radius:12px; padding:16px;">
-          <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">💾 本地快取與資料庫</h3>
-          <p id="settings-storage-stats" style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
-            計算中...
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:6px;">
+              💾 本地快取與資料庫
+            </h3>
+            <button id="btn-refresh-storage" class="btn-sm btn-secondary" style="padding:4px 9px; font-size:11px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="重新計算容量">
+              <span id="btn-refresh-storage-icon" style="display:inline-block; transition:transform 0.4s ease;">🔄</span>
+              <span>重新整理</span>
+            </button>
+          </div>
+
+          <!-- 總空間容量儀表卡片 -->
+          <div style="background:rgba(0, 0, 0, 0.25); border:1px solid rgba(255, 255, 255, 0.06); border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+              <span style="font-size:12px; color:var(--text-muted);">本機儲存總佔用：</span>
+              <span id="settings-storage-total" style="font-size:20px; font-weight:800; color:#38bdf8;">計算中...</span>
+            </div>
+            <div id="settings-storage-quota" style="font-size:11px; color:#64748b; text-align:right; margin-bottom:8px;">
+              正在計算儲存配額...
+            </div>
+            <div style="height:5px; background:rgba(255, 255, 255, 0.08); border-radius:3px; overflow:hidden;">
+              <div id="settings-storage-bar" style="height:100%; width:0%; background:linear-gradient(90deg, #38bdf8, #818cf8); border-radius:3px; transition:width 0.4s ease;"></div>
+            </div>
+          </div>
+
+          <!-- 詳細資料庫與快取細項卡片 (2x2 Grid) -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
+            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.06); border-radius:8px; padding:8px 10px;">
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">🗄️ 資料庫 (IndexedDB)</div>
+              <div id="settings-stat-idb-size" style="font-size:13px; font-weight:700; color:#f1f5f9;">計算中...</div>
+            </div>
+            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.06); border-radius:8px; padding:8px 10px;">
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">🌐 應用快取 (Cache)</div>
+              <div id="settings-stat-cache-size" style="font-size:13px; font-weight:700; color:#f1f5f9;">計算中...</div>
+            </div>
+            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.06); border-radius:8px; padding:8px 10px;">
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">📚 書架藏書</div>
+              <div id="settings-stat-books" style="font-size:13px; font-weight:700; color:#f1f5f9;">- 本</div>
+            </div>
+            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.06); border-radius:8px; padding:8px 10px;">
+              <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">📑 離線快取章節</div>
+              <div id="settings-stat-chapters" style="font-size:13px; font-weight:700; color:#f1f5f9;">- 章</div>
+            </div>
+          </div>
+
+          <p id="settings-storage-stats" style="font-size:11px; color:#94a3b8; margin-bottom:12px; line-height:1.5;">
+            所有章節與書源皆存儲於手機/瀏覽器本地端，離線亦可正常閱讀。
           </p>
-          <button id="btn-clear-cache" class="btn-sm btn-secondary" style="width:100%; padding:8px 0; color:#ef4444;">
-            清空所有離線章節內文 (釋放空間)
+          <button id="btn-clear-cache" class="btn-sm btn-secondary" style="width:100%; padding:9px 0; color:#ef4444; font-weight:600;">
+            🗑️ 清空所有離線章節內文 (釋放空間)
           </button>
         </div>
 
@@ -147,7 +190,7 @@
             檢查是否有新功能或程式碼更新。若畫面未顯示最新改動，可點擊「強制更新重整」一鍵清除快取。
           </p>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:12px; color:var(--text-muted); background:rgba(0,0,0,0.2); padding:8px 12px; border-radius:8px;">
-            <span>快取核心版本：<strong id="pwa-current-version" style="color:#fff;">v2.6</strong></span>
+            <span>快取核心版本：<strong id="pwa-current-version" style="color:#fff;">v3.0</strong></span>
             <span id="pwa-update-status-badge" style="color:#38bdf8; font-weight:600;">運作正常</span>
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">

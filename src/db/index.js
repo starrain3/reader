@@ -312,6 +312,91 @@ export function formatBytes(bytes) {
   return `${size.toFixed(size >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+/**
+ * 取得本地資料庫與儲存空間詳細統計資訊
+ * 包含 IndexedDB 實體統計（書籍數、快取章節數、自訂書源數）與瀏覽器儲存空間 (Storage API)
+ * @returns {Promise<{
+ *   bookCount: number,
+ *   chapterCount: number,
+ *   sourceCount: number,
+ *   totalUsage: number,
+ *   quota: number,
+ *   indexedDBUsage: number | null,
+ *   cacheUsage: number | null,
+ *   percent: number,
+ *   formattedTotal: string,
+ *   formattedQuota: string,
+ *   formattedIndexedDB: string | null,
+ *   formattedCache: string | null
+ * }>}
+ */
+export async function getStorageDetailedStats() {
+  const db = await openDB();
+
+  // 1. 快速統計 IndexedDB 各 Object Store 記錄總數
+  const getCount = (storeName) => new Promise((resolve) => {
+    try {
+      if (!db.objectStoreNames.contains(storeName)) return resolve(0);
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result || 0);
+      req.onerror = () => resolve(0);
+    } catch {
+      resolve(0);
+    }
+  });
+
+  const [bookCount, chapterCount, sourceCount] = await Promise.all([
+    getCount('books'),
+    getCount('chapters'),
+    getCount('sources')
+  ]);
+
+  // 2. 透過標準 Storage Quota API 取得瀏覽器實際硬碟空間佔用
+  let totalUsage = 0;
+  let quota = 0;
+  let indexedDBUsage = null;
+  let cacheUsage = null;
+
+  if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+    try {
+      const estimate = await navigator.storage.estimate();
+      totalUsage = estimate.usage || 0;
+      quota = estimate.quota || 0;
+
+      if (estimate.usageDetails) {
+        if (typeof estimate.usageDetails.indexedDB === 'number') {
+          indexedDBUsage = estimate.usageDetails.indexedDB;
+        }
+        if (typeof estimate.usageDetails.caches === 'number') {
+          cacheUsage = estimate.usageDetails.caches;
+        }
+      }
+    } catch (err) {
+      console.warn('[DB] 查詢 navigator.storage.estimate 失敗:', err);
+    }
+  }
+
+  const percent = quota > 0 ? Math.min(100, (totalUsage / quota) * 100) : 0;
+
+  return {
+    bookCount,
+    chapterCount,
+    sourceCount,
+    totalUsage,
+    quota,
+    indexedDBUsage,
+    cacheUsage,
+    percent,
+    formattedTotal: formatBytes(totalUsage),
+    formattedQuota: quota > 0 ? formatBytes(quota) : '',
+    formattedIndexedDB: indexedDBUsage !== null ? formatBytes(indexedDBUsage) : null,
+    formattedCache: cacheUsage !== null ? formatBytes(cacheUsage) : null
+  };
+}
+
+
 async function getBookChaptersFromDB(bookId) {
   if (bookId === null || bookId === undefined || bookId === '') {
     return [];
