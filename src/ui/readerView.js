@@ -1691,14 +1691,37 @@ class ReaderViewController {
     if (progressBox) progressBox.style.display = 'block';
 
     const CONCURRENCY = 4; // 並發下載通道數
-    const MAX_RETRIES = 3; // 失敗時最多重試 3 次 (共 4 次機會)
+    const ATTEMPTS_PER_ROUND = 3; // 每一輪最多嘗試 3 次 (初次 + 最多 2 次退避重試)
+    const MAX_DEFERS = 3; // 失敗時最多後移 3 次 (共可經歷 4 輪下載)
+    const DEFER_OFFSET = 5; // 每次失敗往後移 5 個 Priority 順位
     const TIMEOUT_MS = 5000; // 單章超時 5 秒
 
-    let nextQueueIndex = 0;
+    // 建立動態下載佇列 (記錄章節索引與已後移次數)
+    let queue = targetIndices.map((idx) => ({
+      chapIndex: idx,
+      deferCount: 0
+    }));
+
+    let activeWorkers = 0;
     let completedCount = 0;
     let successCount = 0;
     let failedCount = 0;
     const totalToDownload = targetIndices.length;
+
+    // 喚醒佇列等待機制的輔助函數
+    let wakeResolvers = [];
+    const notifyWake = () => {
+      while (wakeResolvers.length > 0) {
+        const resolve = wakeResolvers.shift();
+        resolve();
+      }
+    };
+    const waitTask = () => {
+      return new Promise((resolve) => {
+        wakeResolvers.push(resolve);
+        setTimeout(resolve, 250); // 安全兜底逾時
+      });
+    };
 
     const updateUI = (extraMsg = '') => {
       const progressPercent = totalToDownload > 0 ? Math.round((completedCount / totalToDownload) * 100) : 0;
@@ -1715,15 +1738,17 @@ class ReaderViewController {
 
     updateUI();
 
-    const downloadChapterWithRetry = async (chapIndex) => {
+    const processItem = async (item) => {
+      const { chapIndex, deferCount } = item;
       const chapMeta = this.currentBook.chapters[chapIndex];
       let downloaded = false;
 
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      for (let attempt = 0; attempt < ATTEMPTS_PER_ROUND; attempt++) {
         if (this.cancelDownloadFlag) break;
 
         if (attempt > 0) {
-          updateUI(`[重試 ${attempt}/${MAX_RETRIES}] ${chapMeta.title}...`);
+          const deferInfo = deferCount > 0 ? ` [第 ${deferCount}/${MAX_DEFERS} 輪重排]` : '';
+          updateUI(`[重試 ${attempt + 1}/${ATTEMPTS_PER_ROUND}] ${chapMeta.title}${deferInfo}...`);
           const backoffMs = attempt * 800;
           const waitStart = Date.now();
           while (Date.now() - waitStart < backoffMs) {
@@ -1747,25 +1772,54 @@ class ReaderViewController {
             break;
           }
         } catch (err) {
-          console.warn(`[並發下載] 章節 #${chapIndex} (${chapMeta.title}) 第 ${attempt + 1} 次嘗試失敗:`, err);
+          console.warn(`[並發下載] 章節 #${chapIndex} (${chapMeta.title}) 本輪第 ${attempt + 1} 次嘗試失敗:`, err);
         }
       }
 
-      completedCount++;
       if (downloaded) {
         successCount++;
-      } else {
-        failedCount++;
+        completedCount++;
+        updateUI();
+      } else if (!this.cancelDownloadFlag) {
+        // 本輪 3 次嘗試皆失敗
+        if (deferCount < MAX_DEFERS) {
+          // 往後移 5 個 Priority 順位，重新排隊
+          item.deferCount += 1;
+          const insertPos = Math.min(queue.length, DEFER_OFFSET);
+          queue.splice(insertPos, 0, item);
+          updateUI(`[暫緩] ${chapMeta.title} 連續失敗 3 次，後移 5 順位重試 (第 ${item.deferCount}/${MAX_DEFERS} 次重排)`);
+        } else {
+          // 已後移滿 3 次，第 4 輪仍失敗 -> 正式判定為失敗
+          failedCount++;
+          completedCount++;
+          updateUI(`[失敗] ${chapMeta.title} 已達最大重試上限`);
+        }
       }
-      updateUI();
     };
 
     // 啟動 4 個並發 Worker
     const worker = async () => {
-      while (nextQueueIndex < targetIndices.length && !this.cancelDownloadFlag) {
-        const queueIdx = nextQueueIndex++;
-        const chapIndex = targetIndices[queueIdx];
-        await downloadChapterWithRetry(chapIndex);
+      while (!this.cancelDownloadFlag) {
+        if (queue.length === 0) {
+          if (activeWorkers === 0) {
+            // 所有 Worker 皆已閒置且隊列為空 -> 完成
+            notifyWake();
+            break;
+          }
+          // 等待其他 Worker 完成或回插暫緩任務
+          await waitTask();
+          continue;
+        }
+
+        const item = queue.shift();
+        activeWorkers++;
+        try {
+          await processItem(item);
+        } finally {
+          activeWorkers--;
+          notifyWake();
+        }
+
         if (this.cancelDownloadFlag) break;
         // 微小間隔 60ms 平滑請求波峰
         await new Promise((r) => setTimeout(r, 60));

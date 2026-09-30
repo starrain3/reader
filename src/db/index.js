@@ -272,18 +272,80 @@ export async function saveChaptersBatch(chapters) {
   });
 }
 
-export async function getCachedChapterIndices(bookId) {
+/**
+ * 格式化位元組大小為易讀字串 (B, KB, MB, GB)
+ * @param {number} bytes
+ * @returns {string}
+ */
+export function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let size = bytes;
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i++;
+  }
+  return `${size.toFixed(size >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/**
+ * 取得指定書籍的離線快取統計資訊 (已快取章節 Set 與檔案總位元組數)
+ * @param {string|number} bookId 
+ * @returns {Promise<{ indices: Set<number>, totalBytes: number }>}
+ */
+export async function getBookCacheDetails(bookId) {
   const store = await getStore('chapters');
   const index = store.index('bookId');
-  return new Promise((resolve, reject) => {
-    const request = index.getAll(bookId);
-    request.onsuccess = () => {
-      const list = request.result || [];
-      const set = new Set(list.map((c) => c.index));
-      resolve(set);
-    };
-    request.onerror = () => reject(request.error);
+  return new Promise((resolve) => {
+    const isNum = !isNaN(Number(bookId)) && String(bookId).trim() !== '';
+    const targetIds = [bookId];
+    if (isNum && Number(bookId) !== bookId) targetIds.push(Number(bookId));
+    if (String(bookId) !== bookId) targetIds.push(String(bookId));
+
+    const indices = new Set();
+    let totalBytes = 0;
+    let pending = targetIds.length;
+
+    targetIds.forEach((qId) => {
+      const request = index.openCursor(IDBKeyRange.only(qId));
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const val = cursor.value;
+          if (val && typeof val.index === 'number') {
+            if (!indices.has(val.index)) {
+              indices.add(val.index);
+              if (val.content) {
+                if (val.content instanceof Uint8Array || val.content instanceof ArrayBuffer) {
+                  totalBytes += val.content.byteLength || 0;
+                } else if (typeof val.content === 'string') {
+                  totalBytes += val.content.length * 3;
+                }
+              }
+            }
+          }
+          cursor.continue();
+        } else {
+          pending--;
+          if (pending === 0) {
+            resolve({ indices, totalBytes });
+          }
+        }
+      };
+      request.onerror = () => {
+        pending--;
+        if (pending === 0) {
+          resolve({ indices, totalBytes });
+        }
+      };
+    });
   });
+}
+
+export async function getCachedChapterIndices(bookId) {
+  const { indices } = await getBookCacheDetails(bookId);
+  return indices;
 }
 
 // ----------------- 書源設定 (Sources) -----------------
