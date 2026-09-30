@@ -25,8 +25,8 @@ class SettingsViewController {
     this.clearCacheBtn = document.getElementById('btn-clear-cache');
     this.installBtn = document.getElementById('btn-pwa-install');
 
-    const savedWorkerUrl = await getSetting('cf_worker_url', 'https://aged-night-c15f.jasonku50419.workers.dev/');
-    const savedApiKey = await getSetting('cf_api_key', 'superku');
+    const savedWorkerUrl = await getSetting('cf_worker_url', '');
+    const savedApiKey = await getSetting('cf_api_key', '');
 
     if (this.workerUrlInput) this.workerUrlInput.value = savedWorkerUrl;
     if (this.apiKeyInput) this.apiKeyInput.value = savedApiKey;
