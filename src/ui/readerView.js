@@ -3,7 +3,7 @@
  * 沉浸式排版、觸控翻頁、字體與主題調整、章節預加載、繁簡轉換與 TTS 整合
  */
 
-import { getBook, saveBook, getChapter, saveChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices } from '../db/index.js';
+import { getBook, saveBook, getChapter, saveChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices, getBookCacheDetails, formatBytes } from '../db/index.js';
 import { getChapterContent } from '../services/sourceEngine.js';
 import { convertToTraditional } from '../services/opencc.js';
 import { tts } from '../services/tts.js';
@@ -1609,12 +1609,14 @@ class ReaderViewController {
     if (!statsEl) return;
 
     try {
-      const cachedSet = await getCachedChapterIndices(this.currentBook.id);
+      const { indices, totalBytes } = await getBookCacheDetails(this.currentBook.id);
       const total = this.currentBook.chapters.length;
-      const count = cachedSet.size;
+      const count = indices.size;
       const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-      statsEl.textContent = `已離線快取：${count} / ${total} 章 (${pct}%)`;
+      const sizeStr = formatBytes(totalBytes);
+      statsEl.innerHTML = `已離線快取：<span style="color:#fff; font-weight:600;">${count} / ${total}</span> 章 (${pct}%) · 檔案大小：<span style="color:#38bdf8; font-weight:600;">${sizeStr}</span>`;
     } catch (e) {
+      console.warn('[快取統計] 計算快取大小出錯:', e);
       statsEl.textContent = '已離線快取：計算失敗';
     }
   }

@@ -1,5 +1,5 @@
 // Service Worker for 隨身小說閱讀器 (Ku Reader)
-const CACHE_NAME = 'ku-reader-cache-v2.5';
+const CACHE_NAME = 'ku-reader-cache-v2.6';
 const CORE_ASSETS = [
   './',
   './index.html',
