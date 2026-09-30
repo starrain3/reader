@@ -990,7 +990,11 @@ class ReaderViewController {
               url: chapterMeta.url,
               content
             };
-            await saveChapter(chapterData);
+            try {
+              await saveChapter(chapterData);
+            } catch (dbErr) {
+              console.warn(`[快取] 章節 #${index} 寫入本地資料庫失敗 (不影響即時閱讀):`, dbErr);
+            }
           } catch (err) {
             console.warn(`抓取章節出錯 #${index}:`, err);
             return null;

@@ -229,7 +229,6 @@ export async function getChapter(bookId, index) {
 }
 
 export async function saveChapter(chapter) {
-  const store = await getStore('chapters', 'readwrite');
   if (!chapter.id) {
     chapter.id = `${chapter.bookId}_${chapter.index}`;
   }
@@ -239,6 +238,7 @@ export async function saveChapter(chapter) {
     toSave.content = await compressText(toSave.content);
     toSave.isCompressed = true;
   }
+  const store = await getStore('chapters', 'readwrite');
   return new Promise((resolve, reject) => {
     const request = store.put(toSave);
     request.onsuccess = () => resolve(chapter);
@@ -247,7 +247,6 @@ export async function saveChapter(chapter) {
 }
 
 export async function saveChaptersBatch(chapters) {
-  const store = await getStore('chapters', 'readwrite');
   const now = Date.now();
 
   const processed = await Promise.all(
@@ -263,6 +262,7 @@ export async function saveChaptersBatch(chapters) {
     })
   );
 
+  const store = await getStore('chapters', 'readwrite');
   return new Promise((resolve, reject) => {
     for (const chap of processed) {
       store.put(chap);
