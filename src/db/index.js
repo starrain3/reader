@@ -301,38 +301,6 @@ async function getBookChaptersFromDB(bookId) {
 
   const store = await getStore('chapters');
   return new Promise((resolve) => {
-    try {
-      if (store.indexNames.contains('bookId')) {
-        const index = store.index('bookId');
-        const req = index.getAll(bookId);
-        req.onsuccess = () => {
-          let list = req.result || [];
-          if (list.length === 0) {
-            const isNum = !isNaN(Number(bookId)) && String(bookId).trim() !== '';
-            const altId = isNum ? Number(bookId) : String(bookId);
-            if (altId !== bookId) {
-              const altReq = index.getAll(altId);
-              altReq.onsuccess = () => resolve(altReq.result || []);
-              altReq.onerror = () => resolve([]);
-              return;
-            }
-          }
-          resolve(list);
-        };
-        req.onerror = () => resolve([]);
-      } else {
-        const allReq = store.getAll();
-        allReq.onsuccess = () => {
-          const all = allReq.result || [];
-          const matched = all.filter((c) => c && (c.bookId == bookId || String(c.bookId) === String(bookId)));
-          resolve(matched);
-        };
-        allReq.onerror = () => resolve([]);
-      }
-    } catch (err) {
-      console.warn('[DB] getBookChaptersFromDB 出錯:', err);
-      resolve([]);
-    }
   });
 }
 
