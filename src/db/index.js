@@ -45,21 +45,44 @@ export function openDB() {
 
     request.onsuccess = (event) => {
       dbInstance = event.target.result;
+      dbInstance.onclose = () => {
+        dbInstance = null;
+      };
+      dbInstance.onversionchange = () => {
+        try {
+          dbInstance.close();
+        } catch (_) {}
+        dbInstance = null;
+      };
       resolve(dbInstance);
     };
 
     request.onerror = (event) => {
       console.error('IndexedDB 打開失敗:', event.target.error);
+      dbInstance = null;
       reject(event.target.error);
     };
   });
 }
 
-// 通用交易輔助函數
+// 通用交易輔助函數 (具備自動重連機制)
 async function getStore(storeName, mode = 'readonly') {
-  const db = await openDB();
-  const tx = db.transaction(storeName, mode);
-  return tx.objectStore(storeName);
+  let db = await openDB();
+  try {
+    const tx = db.transaction(storeName, mode);
+    return tx.objectStore(storeName);
+  } catch (err) {
+    console.warn('[DB] getStore 交易建立失敗，重置連線後重試:', err);
+    try {
+      if (dbInstance) {
+        dbInstance.close();
+      }
+    } catch (_) {}
+    dbInstance = null;
+    db = await openDB();
+    const tx = db.transaction(storeName, mode);
+    return tx.objectStore(storeName);
+  }
 }
 
 // ----------------- 書籍相關 (Books) -----------------
@@ -289,19 +312,57 @@ export function formatBytes(bytes) {
   return `${size.toFixed(size >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-/**
- * 內部輔助：取得指定書籍在 chapters 資料表中的所有快取記錄 (支援數字/字串 ID 與掃描兜底)
- * @param {string|number} bookId
- * @returns {Promise<Array>}
- */
 async function getBookChaptersFromDB(bookId) {
   if (bookId === null || bookId === undefined || bookId === '') {
     return [];
   }
 
-  const store = await getStore('chapters');
-  return new Promise((resolve) => {
-  });
+  try {
+    const store = await getStore('chapters');
+    return new Promise((resolve) => {
+      // 逾時安全保護，避免 Promise 永久掛起
+      const timer = setTimeout(() => {
+        console.warn('[DB] getBookChaptersFromDB 查詢逾時，安全降級回傳空陣列');
+        resolve([]);
+      }, 5000);
+
+      const safeResolve = (res) => {
+        clearTimeout(timer);
+        resolve(res || []);
+      };
+
+      if (store.indexNames.contains('bookId')) {
+        const index = store.index('bookId');
+        const req = index.getAll(bookId);
+        req.onsuccess = () => {
+          let list = req.result || [];
+          if (list.length === 0) {
+            const isNum = !isNaN(Number(bookId)) && String(bookId).trim() !== '';
+            const altId = isNum ? Number(bookId) : String(bookId);
+            if (altId !== bookId) {
+              const altReq = index.getAll(altId);
+              altReq.onsuccess = () => safeResolve(altReq.result || []);
+              altReq.onerror = () => safeResolve([]);
+              return;
+            }
+          }
+          safeResolve(list);
+        };
+        req.onerror = () => safeResolve([]);
+      } else {
+        const allReq = store.getAll();
+        allReq.onsuccess = () => {
+          const all = allReq.result || [];
+          const matched = all.filter((c) => c && (c.bookId == bookId || String(c.bookId) === String(bookId)));
+          safeResolve(matched);
+        };
+        allReq.onerror = () => safeResolve([]);
+      }
+    });
+  } catch (err) {
+    console.warn('[DB] getBookChaptersFromDB 發生例外:', err);
+    return [];
+  }
 }
 
 /**
