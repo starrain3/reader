@@ -3,7 +3,7 @@
  * 沉浸式排版、觸控翻頁、字體與主題調整、章節預加載、繁簡轉換與 TTS 整合
  */
 
-import { getBook, saveBook, getChapter, saveChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices, getBookCacheDetails, formatBytes } from '../db/index.js';
+import { getBook, saveBook, getChapter, saveChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices, getBookCacheDetails, formatBytes, compressBookCachedChapters } from '../db/index.js';
 import { getChapterContent } from '../services/sourceEngine.js';
 import { convertToTraditional } from '../services/opencc.js';
 import { tts } from '../services/tts.js';
@@ -23,6 +23,7 @@ class ReaderViewController {
     this.textColor = null;
     this.customColors = [];
     this.sourcesMap = new Map();
+    this.isCompressing = false;
 
     // DOM 元素引用
     this.viewEl = null;
@@ -196,6 +197,11 @@ class ReaderViewController {
     });
     document.getElementById('btn-cancel-download')?.addEventListener('click', () => {
       this.cancelDownload();
+    });
+
+    // 壓縮快取按鈕
+    document.getElementById('btn-compress-cache')?.addEventListener('click', () => {
+      this.compressCache();
     });
 
     // 匯出 TXT 按鈕
@@ -1606,15 +1612,44 @@ class ReaderViewController {
   async updateCacheStats() {
     if (!this.currentBook || !this.currentBook.chapters) return;
     const statsEl = document.getElementById('download-cache-stats');
+    const badgeEl = document.getElementById('compress-cache-badge');
+    const compressBtn = document.getElementById('btn-compress-cache');
     if (!statsEl) return;
 
     try {
-      const { indices, totalBytes } = await getBookCacheDetails(this.currentBook.id);
+      const { indices, totalBytes, uncompressedCount } = await getBookCacheDetails(this.currentBook.id);
       const total = this.currentBook.chapters.length;
       const count = indices.size;
       const pct = total > 0 ? Math.round((count / total) * 100) : 0;
       const sizeStr = formatBytes(totalBytes);
-      statsEl.innerHTML = `已離線快取：<span style="color:#fff; font-weight:600;">${count} / ${total}</span> 章 (${pct}%) · 檔案大小：<span style="color:#38bdf8; font-weight:600;">${sizeStr}</span>`;
+
+      let uncompTip = '';
+      if (uncompressedCount > 0) {
+        uncompTip = ` <span style="color:#f59e0b; font-size:11px; margin-left:4px;">(有 ${uncompressedCount} 章未壓縮)</span>`;
+      }
+      statsEl.innerHTML = `已離線快取：<span style="color:#fff; font-weight:600;">${count} / ${total}</span> 章 (${pct}%) · 檔案大小：<span style="color:#38bdf8; font-weight:600;">${sizeStr}</span>${uncompTip}`;
+
+      if (badgeEl && compressBtn) {
+        if (uncompressedCount > 0) {
+          badgeEl.innerHTML = `<span style="color:#f59e0b;">● ${uncompressedCount} 章可壓縮瘦身</span>`;
+          compressBtn.innerHTML = `🗜️ 一鍵壓縮未壓縮章節 (${uncompressedCount} 章可瘦身)`;
+          compressBtn.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+          compressBtn.style.color = '#fbbf24';
+          compressBtn.style.background = 'rgba(245, 158, 11, 0.08)';
+        } else if (count > 0) {
+          badgeEl.innerHTML = `<span style="color:#10b981;">✓ 已全數最高壓縮</span>`;
+          compressBtn.innerHTML = `🗜️ 快取已是最高壓縮狀態`;
+          compressBtn.style.borderColor = '';
+          compressBtn.style.color = 'var(--text-muted)';
+          compressBtn.style.background = '';
+        } else {
+          badgeEl.innerHTML = `<span style="color:var(--text-muted);">無快取內容</span>`;
+          compressBtn.innerHTML = `🗜️ 一鍵壓縮已快取章節`;
+          compressBtn.style.borderColor = '';
+          compressBtn.style.color = '';
+          compressBtn.style.background = '';
+        }
+      }
     } catch (e) {
       console.warn('[快取統計] 計算快取大小出錯:', e);
       statsEl.textContent = '已離線快取：計算失敗';
@@ -1859,10 +1894,77 @@ class ReaderViewController {
     }
 
     setTimeout(() => {
-      if (progressBox && !this.isDownloading) {
+      if (progressBox && !this.isDownloading && !this.isCompressing) {
         progressBox.style.display = 'none';
       }
     }, 2500);
+  }
+
+  async compressCache() {
+    if (!this.currentBook || !this.currentBook.chapters) return;
+    if (this.isDownloading) {
+      showToast('目前已有下載任務正在進行中，請稍候');
+      return;
+    }
+    if (this.isCompressing) {
+      showToast('快取壓縮正在進行中，請稍候');
+      return;
+    }
+
+    const { indices, uncompressedCount } = await getBookCacheDetails(this.currentBook.id);
+    if (indices.size === 0) {
+      showToast('本書目前尚無任何離線快取章節');
+      return;
+    }
+    if (uncompressedCount === 0) {
+      showToast('本書所有已快取章節皆已處於最高 Gzip 壓縮狀態，無須再次壓縮！');
+      return;
+    }
+
+    this.isCompressing = true;
+    const progressBox = document.getElementById('download-progress-box');
+    const progressBar = document.getElementById('download-progress-bar');
+    const statusText = document.getElementById('download-status-text');
+    const percentText = document.getElementById('download-percent-text');
+    const cancelBtn = document.getElementById('btn-cancel-download');
+
+    if (progressBox) progressBox.style.display = 'block';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (statusText) statusText.textContent = `正在進行本地無損壓縮 (共 ${uncompressedCount} 章)...`;
+    if (percentText) percentText.textContent = '0%';
+    if (progressBar) progressBar.style.width = '0%';
+
+    try {
+      const result = await compressBookCachedChapters(this.currentBook.id, ({ current, total, percent, savedBytes }) => {
+        if (progressBar) progressBar.style.width = `${percent}%`;
+        if (percentText) percentText.textContent = `${percent}%`;
+        if (statusText) {
+          statusText.textContent = `壓縮進度 (${current}/${total}) · 已節省 ${formatBytes(savedBytes)}`;
+        }
+      });
+
+      await this.updateCacheStats();
+
+      const savedStr = formatBytes(result.savedBytes);
+      const origStr = formatBytes(result.originalBytes);
+      const finalStr = formatBytes(result.finalBytes);
+
+      if (statusText) {
+        statusText.textContent = `壓縮完成！由 ${origStr} 降至 ${finalStr} (省下 ${savedStr})`;
+      }
+      showToast(`🎉 成功壓縮 ${result.compressedCount} 章！為您節省了 ${savedStr} 空間`);
+    } catch (err) {
+      console.error('[壓縮快取] 執行失敗:', err);
+      showToast(`壓縮快取失敗: ${err.message}`);
+    } finally {
+      this.isCompressing = false;
+      if (cancelBtn) cancelBtn.style.display = '';
+      setTimeout(() => {
+        if (progressBox && !this.isDownloading && !this.isCompressing) {
+          progressBox.style.display = 'none';
+        }
+      }, 3000);
+    }
   }
 
   async exportBookToTxt() {

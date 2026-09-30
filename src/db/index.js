@@ -290,13 +290,13 @@ export function formatBytes(bytes) {
 }
 
 /**
- * 取得指定書籍的離線快取統計資訊 (已快取章節 Set 與檔案總位元組數)
- * @param {string|number} bookId 
- * @returns {Promise<{ indices: Set<number>, totalBytes: number }>}
+ * 內部輔助：取得指定書籍在 chapters 資料表中的所有快取記錄 (支援數字/字串 ID 與掃描兜底)
+ * @param {string|number} bookId
+ * @returns {Promise<Array>}
  */
-export async function getBookCacheDetails(bookId) {
+async function getBookChaptersFromDB(bookId) {
   if (bookId === null || bookId === undefined || bookId === '') {
-    return { indices: new Set(), totalBytes: 0 };
+    return [];
   }
 
   const store = await getStore('chapters');
@@ -312,33 +312,49 @@ export async function getBookCacheDetails(bookId) {
             const altId = isNum ? Number(bookId) : String(bookId);
             if (altId !== bookId) {
               const altReq = index.getAll(altId);
-              altReq.onsuccess = () => resolve(calculateStats(altReq.result || []));
-              altReq.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+              altReq.onsuccess = () => resolve(altReq.result || []);
+              altReq.onerror = () => resolve([]);
               return;
             }
           }
-          resolve(calculateStats(list));
+          resolve(list);
         };
-        req.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+        req.onerror = () => resolve([]);
       } else {
         const allReq = store.getAll();
         allReq.onsuccess = () => {
           const all = allReq.result || [];
           const matched = all.filter((c) => c && (c.bookId == bookId || String(c.bookId) === String(bookId)));
-          resolve(calculateStats(matched));
+          resolve(matched);
         };
-        allReq.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+        allReq.onerror = () => resolve([]);
       }
     } catch (err) {
-      console.warn('[DB] getBookCacheDetails 出錯，降級回傳空統計:', err);
-      resolve({ indices: new Set(), totalBytes: 0 });
+      console.warn('[DB] getBookChaptersFromDB 出錯:', err);
+      resolve([]);
     }
   });
+}
+
+/**
+ * 取得指定書籍的離線快取統計資訊 (已快取章節 Set、檔案總位元組數與未壓縮章節數)
+ * @param {string|number} bookId 
+ * @returns {Promise<{ indices: Set<number>, totalBytes: number, uncompressedCount: number }>}
+ */
+export async function getBookCacheDetails(bookId) {
+  try {
+    const list = await getBookChaptersFromDB(bookId);
+    return calculateStats(list);
+  } catch (err) {
+    console.warn('[DB] getBookCacheDetails 出錯，降級回傳空統計:', err);
+    return { indices: new Set(), totalBytes: 0, uncompressedCount: 0 };
+  }
 }
 
 function calculateStats(list) {
   const indices = new Set();
   let totalBytes = 0;
+  let uncompressedCount = 0;
   for (const item of list) {
     if (!item) continue;
     if (typeof item.index === 'number') {
@@ -349,10 +365,97 @@ function calculateStats(list) {
         totalBytes += item.content.byteLength || 0;
       } else if (typeof item.content === 'string') {
         totalBytes += item.content.length * 3;
+        // 未設定 isCompressed 或是純字串皆計為可壓縮
+        if (!item.isCompressed) {
+          uncompressedCount++;
+        }
       }
     }
   }
-  return { indices, totalBytes };
+  return { indices, totalBytes, uncompressedCount };
+}
+
+/**
+ * 原地無損壓縮指定書籍所有歷史未壓縮快取章節 (Gzip 瘦身)
+ * @param {string|number} bookId
+ * @param {Function} [onProgress] - 進度回調 ({ current, total, percent, savedBytes })
+ * @returns {Promise<{ success: boolean, compressedCount: number, totalCount: number, savedBytes: number, originalBytes: number, finalBytes: number }>}
+ */
+export async function compressBookCachedChapters(bookId, onProgress) {
+  const list = await getBookChaptersFromDB(bookId);
+  // 篩選出純字串且未壓縮的章節記錄
+  const toCompress = list.filter((item) => item && typeof item.content === 'string' && !item.isCompressed);
+
+  if (toCompress.length === 0) {
+    return {
+      success: true,
+      compressedCount: 0,
+      totalCount: list.length,
+      savedBytes: 0,
+      originalBytes: 0,
+      finalBytes: 0
+    };
+  }
+
+  let originalBytes = 0;
+  let finalBytes = 0;
+  let processedCount = 0;
+  const total = toCompress.length;
+
+  const BATCH_SIZE = 40; // 每批 40 章，兼顧性能與 IndexedDB 記憶體負擔
+  for (let i = 0; i < total; i += BATCH_SIZE) {
+    const chunk = toCompress.slice(i, i + BATCH_SIZE);
+
+    // 1. 在外部並行進行 Gzip 壓縮，避免佔用活躍交易
+    const compressedChunk = await Promise.all(
+      chunk.map(async (chap) => {
+        const origLen = (chap.content || '').length * 3;
+        originalBytes += origLen;
+
+        const compressedData = await compressText(chap.content);
+        const compLen = compressedData.byteLength || compressedData.length || origLen;
+        finalBytes += compLen;
+
+        return {
+          ...chap,
+          content: compressedData,
+          isCompressed: true
+        };
+      })
+    );
+
+    // 2. 開啟 readwrite 交易迅速批次寫回
+    const store = await getStore('chapters', 'readwrite');
+    await new Promise((resolve, reject) => {
+      for (const item of compressedChunk) {
+        store.put(item);
+      }
+      store.transaction.oncomplete = () => resolve(true);
+      store.transaction.onerror = () => reject(store.transaction.error);
+      store.transaction.onabort = () => reject(store.transaction.error || new Error('Transaction aborted'));
+    });
+
+    processedCount += chunk.length;
+    if (typeof onProgress === 'function') {
+      const percent = Math.min(100, Math.round((processedCount / total) * 100));
+      onProgress({
+        current: processedCount,
+        total,
+        percent,
+        savedBytes: Math.max(0, originalBytes - finalBytes)
+      });
+    }
+  }
+
+  const savedBytes = Math.max(0, originalBytes - finalBytes);
+  return {
+    success: true,
+    compressedCount: total,
+    totalCount: list.length,
+    savedBytes,
+    originalBytes,
+    finalBytes
+  };
 }
 
 export async function getCachedChapterIndices(bookId) {
