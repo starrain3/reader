@@ -362,6 +362,14 @@ export async function getCachedChapterIndices(bookId) {
 
 // ----------------- 書源設定 (Sources) -----------------
 
+export async function getAllSources() {
+  const store = await getStore('sources');
+  return new Promise((resolve, reject) => {
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
 
 export async function saveSource(source) {
   const store = await getStore('sources', 'readwrite');
