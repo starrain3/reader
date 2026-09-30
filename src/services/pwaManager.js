@@ -179,3 +179,32 @@ export async function checkForUpdates() {
     showToast('檢查更新失敗，請確認網路連線是否正常');
   }
 }
+
+/**
+ * 強制清除快取並立即重新載入最新版本
+ */
+export async function forceUpdateApp() {
+  showToast('正在清除快取並檢查最新版本...');
+  try {
+    // 1. 清理 Cache Storage 中的靜態資產
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      for (const key of keys) {
+        await caches.delete(key);
+      }
+    }
+    // 2. 觸發 Service Worker 更新
+    if (registration) {
+      await registration.update();
+    }
+    showToast('快取已清除，正在重新載入最新版本...');
+    setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('t', String(Date.now()));
+      window.location.href = url.toString();
+    }, 600);
+  } catch (err) {
+    console.error('[PWA] 強制更新失敗:', err);
+    window.location.reload();
+  }
+}

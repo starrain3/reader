@@ -6,7 +6,7 @@
 import { getSetting, saveSetting, openDB, getAllBooks } from '../db/index.js';
 import { testCloudflareWorker } from '../services/network.js';
 import { showToast } from './toast.js';
-import { checkForUpdates } from '../services/pwaManager.js';
+import { checkForUpdates, forceUpdateApp } from '../services/pwaManager.js';
 
 class SettingsViewController {
   constructor() {
@@ -127,7 +127,24 @@ export default {
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = '🔍 檢查最新版本';
+          btn.textContent = '🔍 檢查線上更新';
+        }
+      }
+    });
+
+    // 強制清除快取並重整
+    document.getElementById('btn-force-update')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-force-update');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '正在重整...';
+      }
+      try {
+        await forceUpdateApp();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 強制更新重整';
         }
       }
     });

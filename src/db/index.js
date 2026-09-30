@@ -295,52 +295,64 @@ export function formatBytes(bytes) {
  * @returns {Promise<{ indices: Set<number>, totalBytes: number }>}
  */
 export async function getBookCacheDetails(bookId) {
+  if (bookId === null || bookId === undefined || bookId === '') {
+    return { indices: new Set(), totalBytes: 0 };
+  }
+
   const store = await getStore('chapters');
-  const index = store.index('bookId');
   return new Promise((resolve) => {
-    const isNum = !isNaN(Number(bookId)) && String(bookId).trim() !== '';
-    const targetIds = [bookId];
-    if (isNum && Number(bookId) !== bookId) targetIds.push(Number(bookId));
-    if (String(bookId) !== bookId) targetIds.push(String(bookId));
-
-    const indices = new Set();
-    let totalBytes = 0;
-    let pending = targetIds.length;
-
-    targetIds.forEach((qId) => {
-      const request = index.openCursor(IDBKeyRange.only(qId));
-      request.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (cursor) {
-          const val = cursor.value;
-          if (val && typeof val.index === 'number') {
-            if (!indices.has(val.index)) {
-              indices.add(val.index);
-              if (val.content) {
-                if (val.content instanceof Uint8Array || val.content instanceof ArrayBuffer) {
-                  totalBytes += val.content.byteLength || 0;
-                } else if (typeof val.content === 'string') {
-                  totalBytes += val.content.length * 3;
-                }
-              }
+    try {
+      if (store.indexNames.contains('bookId')) {
+        const index = store.index('bookId');
+        const req = index.getAll(bookId);
+        req.onsuccess = () => {
+          let list = req.result || [];
+          if (list.length === 0) {
+            const isNum = !isNaN(Number(bookId)) && String(bookId).trim() !== '';
+            const altId = isNum ? Number(bookId) : String(bookId);
+            if (altId !== bookId) {
+              const altReq = index.getAll(altId);
+              altReq.onsuccess = () => resolve(calculateStats(altReq.result || []));
+              altReq.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+              return;
             }
           }
-          cursor.continue();
-        } else {
-          pending--;
-          if (pending === 0) {
-            resolve({ indices, totalBytes });
-          }
-        }
-      };
-      request.onerror = () => {
-        pending--;
-        if (pending === 0) {
-          resolve({ indices, totalBytes });
-        }
-      };
-    });
+          resolve(calculateStats(list));
+        };
+        req.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+      } else {
+        const allReq = store.getAll();
+        allReq.onsuccess = () => {
+          const all = allReq.result || [];
+          const matched = all.filter((c) => c && (c.bookId == bookId || String(c.bookId) === String(bookId)));
+          resolve(calculateStats(matched));
+        };
+        allReq.onerror = () => resolve({ indices: new Set(), totalBytes: 0 });
+      }
+    } catch (err) {
+      console.warn('[DB] getBookCacheDetails 出錯，降級回傳空統計:', err);
+      resolve({ indices: new Set(), totalBytes: 0 });
+    }
   });
+}
+
+function calculateStats(list) {
+  const indices = new Set();
+  let totalBytes = 0;
+  for (const item of list) {
+    if (!item) continue;
+    if (typeof item.index === 'number') {
+      indices.add(item.index);
+    }
+    if (item.content) {
+      if (item.content instanceof Uint8Array || item.content instanceof ArrayBuffer) {
+        totalBytes += item.content.byteLength || 0;
+      } else if (typeof item.content === 'string') {
+        totalBytes += item.content.length * 3;
+      }
+    }
+  }
+  return { indices, totalBytes };
 }
 
 export async function getCachedChapterIndices(bookId) {
@@ -350,14 +362,6 @@ export async function getCachedChapterIndices(bookId) {
 
 // ----------------- 書源設定 (Sources) -----------------
 
-export async function getAllSources() {
-  const store = await getStore('sources');
-  return new Promise((resolve, reject) => {
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
-}
 
 export async function saveSource(source) {
   const store = await getStore('sources', 'readwrite');
