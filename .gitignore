@@ -3,3 +3,12 @@ dist/
 .DS_Store
 *.local
 GEMINI.md
+
+# Android / Gradle artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+android/local.properties
+*.keystore
+*.jks

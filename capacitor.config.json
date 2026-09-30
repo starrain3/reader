@@ -1,15 +1,13 @@
 {
-  "appId": "com.kutools.reader",
+  "appId": "com.ku.novelreader",
   "appName": "隨身小說閱讀器",
   "webDir": "dist",
-  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
     }
-  },
-  "server": {
-    "androidScheme": "https",
-    "cleartext": true
   }
 }

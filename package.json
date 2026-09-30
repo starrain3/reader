@@ -1,19 +1,26 @@
 {
   "name": "ku-novel-reader",
-  "version": "1.0.0",
+  "version": "3.2.0",
   "description": "專為 Android 行動裝置打造的小說閱讀器 (PWA / Hybrid APK Ready)",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "build:apk": "vite build --mode apk",
+    "cap:sync": "vite build --mode apk && cap sync android",
+    "cap:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
     "fast-gbk": "^0.0.1",
     "jszip": "^3.10.1",
     "opencc-js": "^1.0.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "vite": "^5.4.2"
   }
 }

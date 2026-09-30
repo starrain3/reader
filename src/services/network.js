@@ -72,26 +72,29 @@ export async function testCloudflareWorker(workerUrl, apiKey = '') {
  * @param {string} expectedCharset - 指定編碼 (若為 auto 則自動偵測 meta charset)
  */
 export async function fetchText(url, options = {}, expectedCharset = 'auto') {
-  // 1. 如果在 Capacitor 原生環境，使用原生 HTTP 插件繞過所有 CORS
-  if (isCapacitorNative() && window.Capacitor.Plugins?.CapacitorHttp) {
+  // 1. 【APK 原生直連分支】：透過 Compile Option 切換，完全繞過 CORS，直連目標小說站
+  if (__IS_APK__) {
     try {
-      const response = await window.Capacitor.Plugins.CapacitorHttp.get({
+      const { CapacitorHttp } = await import('@capacitor/core');
+      const response = await CapacitorHttp.get({
         url,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 Chrome/116.0.0.0 Mobile Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36',
           ...options.headers
         },
         responseType: 'arraybuffer',
         connectTimeout: options.timeout || 15000,
         readTimeout: options.timeout || 15000
       });
+
       return decodeBuffer(response.data, expectedCharset);
     } catch (err) {
-      console.warn('CapacitorHttp 請求失敗，退回代理模式:', err);
+      console.error('[APK 原生網路請求失敗]:', err);
+      throw new Error(`原生網路連線失敗: ${err.message || err}`);
     }
   }
 
-  // 2. 瀏覽器 / PWA 環境：使用專屬 Cloudflare Worker 代理或備用代理
+  // 2. 【PWA 主線分支】：使用專屬 Cloudflare Worker 代理或自訂代理
   const { workerUrl, apiKey } = await getProxyConfig();
 
   let targetFetchUrl = '';
@@ -151,10 +154,28 @@ export async function fetchText(url, options = {}, expectedCharset = 'auto') {
 }
 
 /**
- * 智慧解碼 ArrayBuffer
+ * 智慧解碼 ArrayBuffer / Base64 / Uint8Array
  */
 function decodeBuffer(buffer, charset) {
-  const bytes = new Uint8Array(buffer);
+  let bytes;
+  if (buffer instanceof Uint8Array) {
+    bytes = buffer;
+  } else if (buffer instanceof ArrayBuffer) {
+    bytes = new Uint8Array(buffer);
+  } else if (typeof buffer === 'string') {
+    // 支援 Base64 (Capacitor 原生 arraybuffer 回傳型態)
+    try {
+      const binaryString = atob(buffer);
+      bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+    } catch {
+      bytes = new TextEncoder().encode(buffer);
+    }
+  } else {
+    bytes = new Uint8Array();
+  }
 
   if (charset && charset !== 'auto') {
     try {

@@ -31,8 +31,44 @@ class SettingsViewController {
     if (this.workerUrlInput) this.workerUrlInput.value = savedWorkerUrl;
     if (this.apiKeyInput) this.apiKeyInput.value = savedApiKey;
 
+    // 依據編譯選項 (Compile Option) 適配 UI 呈現
+    if (__IS_APK__) {
+      // 顯示極簡原生連線引擎卡片
+      const nativeEngineCard = document.getElementById('settings-card-native-engine');
+      if (nativeEngineCard) nativeEngineCard.style.display = 'block';
+
+      // 隱藏 Worker 設定、部署教學與 PWA 安裝指引
+      const cfProxyCard = document.getElementById('settings-card-cf-proxy');
+      if (cfProxyCard) cfProxyCard.style.display = 'none';
+
+      const cfGuideCard = document.getElementById('settings-card-cf-guide');
+      if (cfGuideCard) cfGuideCard.style.display = 'none';
+
+      const pwaInstallCard = document.getElementById('settings-card-pwa-install');
+      if (pwaInstallCard) pwaInstallCard.style.display = 'none';
+
+      // 對齊版本資訊
+      const versionLabel = document.getElementById('pwa-version-label');
+      if (versionLabel) versionLabel.textContent = '應用程式版本：';
+
+      const versionVal = document.getElementById('pwa-current-version');
+      if (versionVal) versionVal.textContent = `${__APP_VERSION__} (Android)`;
+
+      const updateActions = document.getElementById('pwa-update-actions');
+      if (updateActions) updateActions.style.display = 'none';
+
+      const updateDesc = document.getElementById('pwa-update-desc-text');
+      if (updateDesc) updateDesc.textContent = 'Ku Reader 隨身小說閱讀器，已啟用 Android 原生直連加速。';
+    } else {
+      // PWA 模式：顯示對齊版本號
+      const versionVal = document.getElementById('pwa-current-version');
+      if (versionVal) versionVal.textContent = __APP_VERSION__;
+    }
+
     this.bindEvents();
-    this.initPwaInstall();
+    if (!__IS_APK__) {
+      this.initPwaInstall();
+    }
     this.updateStorageStats();
   }
 

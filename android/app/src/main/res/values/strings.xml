@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">隨身小說閱讀器</string>
+    <string name="title_activity_main">隨身小說閱讀器</string>
+    <string name="package_name">com.ku.novelreader</string>
+    <string name="custom_url_scheme">com.ku.novelreader</string>
+</resources>

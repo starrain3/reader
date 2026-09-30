@@ -14,8 +14,22 @@ import { initPwaManager } from './services/pwaManager.js';
 async function initApp() {
   console.log('正在啟動隨身小說閱讀器...');
 
-  // 初始化 PWA 離線快取與更新進度管理器
-  initPwaManager();
+  // 依據 Compile Option 決定進入點環境
+  if (!__IS_APK__) {
+    // PWA 模式：初始化離線快取與更新進度管理器
+    initPwaManager();
+  } else {
+    // APK 模式：隱藏底部「書源」分頁並啟動 Android 原生返回鍵控制
+    const sourcesNav = document.querySelector('.nav-item[data-view="sources"]');
+    if (sourcesNav) sourcesNav.style.display = 'none';
+
+    try {
+      const { initNativeApp } = await import('./services/nativeService.js');
+      initNativeApp();
+    } catch (err) {
+      console.warn('初始化原生模組失敗:', err);
+    }
+  }
 
   // 1. 初始化預設書源
   await initDefaultSources();
@@ -24,7 +38,9 @@ async function initApp() {
   await readerView.init();
   bookshelfView.init();
   searchView.init();
-  sourcesView.init();
+  if (!__IS_APK__) {
+    sourcesView.init();
+  }
   await settingsView.init();
 
   // 3. 綁定底部導航分頁切換
