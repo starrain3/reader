@@ -1,6 +1,6 @@
 {
   "name": "ku-novel-reader",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "專為 Android 行動裝置打造的小說閱讀器 (PWA / Hybrid APK Ready)",
   "type": "module",
   "scripts": {

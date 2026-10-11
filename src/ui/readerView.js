@@ -80,6 +80,7 @@ class ReaderViewController {
     this.isScrollTicking = false;
     this.lastPositionDetectTime = 0;
     this.scrollEndTimer = null;
+    this.lastScrollTop = 0;
   }
 
   async init() {
@@ -955,6 +956,7 @@ class ReaderViewController {
     this.currentParagraphIndex = targetParagraphIndex;
     this.isLoadingNext = false;
     this.isLoadingPrev = false;
+    this.lastScrollTop = 0;
 
     // 嘗試取得章節內容
     const chapterData = await this.fetchChapterData(index);
@@ -1145,9 +1147,6 @@ class ReaderViewController {
 
       // 背景預加載下一章
       this.prefetchNextChapter(nextIndex + 1);
-
-      // 滑動視窗回收：確保 DOM 節點總量受控
-      this.pruneOldChaptersIfNeeded();
     } else {
       // 載入失敗時提示並提供重試按鈕
       const retryEl = document.createElement('div');
@@ -1210,58 +1209,28 @@ class ReaderViewController {
       // 自動補償 scrollTop，讓使用者的視覺視野紋絲不動！
       const deltaHeight = this.contentBox.scrollHeight - prevScrollHeight;
       this.contentBox.scrollTop = prevScrollTop + deltaHeight;
-
-      // 滑動視窗回收：確保 DOM 節點總量受控
-      this.pruneOldChaptersIfNeeded();
     }
 
     this.isLoadingPrev = false;
   }
 
   /**
-   * DOM 滑動視窗回收：當渲染章節總數過多時，回收遠離視野的離屏章節節點
-   */
-  pruneOldChaptersIfNeeded() {
-    if (!this.contentBox || this.renderedChapters.size <= 8) return;
-
-    // 情況 1：向下滾動過遠，上方累積超過 4 章時，回收頂部舊章節
-    if (this.currentChapterIndex - this.lowestRenderedIndex > 4) {
-      const oldestIdx = this.lowestRenderedIndex;
-      const oldestBlock = this.contentBox.querySelector(`.reader-chapter-block[data-chapter-index="${oldestIdx}"]`);
-      if (oldestBlock) {
-        const h = oldestBlock.offsetHeight;
-        oldestBlock.remove();
-        this.contentBox.scrollTop = Math.max(0, this.contentBox.scrollTop - h);
-      }
-      this.renderedChapters.delete(oldestIdx);
-      this.lowestRenderedIndex = oldestIdx + 1;
-    }
-
-    // 情況 2：向上滾動過遠，下方累積超過 4 章時，回收底部舊章節
-    if (this.highestRenderedIndex - this.currentChapterIndex > 4 && this.renderedChapters.size > 8) {
-      const newestIdx = this.highestRenderedIndex;
-      const newestBlock = this.contentBox.querySelector(`.reader-chapter-block[data-chapter-index="${newestIdx}"]`);
-      if (newestBlock) {
-        newestBlock.remove();
-      }
-      this.renderedChapters.delete(newestIdx);
-      this.highestRenderedIndex = newestIdx - 1;
-    }
-  }
-
-  /**
-   * 滾動事件處理：雙向感應 (接近頂部追加上一章，接近底端追加下一章，並動態偵測當前可見章節與段落同步進度)
+   * 滾動事件處理：雙向感應 (向上滑動到頂部追加上一章，接近底端追加下一章，並動態偵測當前可見章節與段落同步進度)
    */
   handleContinuousScroll() {
     if (!this.contentBox || !this.currentBook) return;
 
-    // 1. 檢查是否接近頂部 (小於 250px 且前方有章節，觸發向上接續上一章)
-    if (this.contentBox.scrollTop < 250 && !this.isLoadingPrev && this.lowestRenderedIndex > 0) {
+    const currentScrollTop = this.contentBox.scrollTop;
+    const isScrollingUp = typeof this.lastScrollTop === 'number' && currentScrollTop < this.lastScrollTop;
+    this.lastScrollTop = currentScrollTop;
+
+    // 1. 檢查是否正在向上滑動且極接近頂部 (小於 80px 且明確向上滾動，前方有章節，觸發向上接續上一章)
+    if (isScrollingUp && currentScrollTop < 80 && !this.isLoadingPrev && this.lowestRenderedIndex > 0) {
       this.prependPrevChapter();
     }
 
     // 2. 檢查是否接近底部 (小於 800px 觸發追加下一章)
-    const scrollBottom = this.contentBox.scrollHeight - this.contentBox.scrollTop - this.contentBox.clientHeight;
+    const scrollBottom = this.contentBox.scrollHeight - currentScrollTop - this.contentBox.clientHeight;
     if (scrollBottom < 800 && !this.isLoadingNext) {
       this.appendNextChapter();
     }
