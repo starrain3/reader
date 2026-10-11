@@ -73,6 +73,13 @@ class ReaderViewController {
     // 閱讀進度細部定位狀態 (段落與防抖保存)
     this.currentParagraphIndex = 0;
     this.saveProgressTimer = null;
+
+    // 效能與功耗優化狀態 (延遲渲染、時鐘生命週期與滾動節流)
+    this.drawerNeedsRender = true;
+    this.clockInterval = null;
+    this.isScrollTicking = false;
+    this.lastPositionDetectTime = 0;
+    this.scrollEndTimer = null;
   }
 
   async init() {
@@ -126,7 +133,6 @@ class ReaderViewController {
     this.syncCustomColorInputValue();
     this.updateWakeLockUI();
     this.bindEvents();
-    this.startClock();
 
     // 監聽頁面能見度 (Visibility Change)，切換回 App 時若處於閱讀介面則自動恢復螢幕常亮
     document.addEventListener('visibilitychange', () => {
@@ -154,10 +160,20 @@ class ReaderViewController {
       }
     });
 
-    // 連續滾動監聽：滑動接近底部時自動載入追加下一章，並動態偵測當前可見章節
-    this.contentBox?.addEventListener('scroll', () => {
-      this.handleContinuousScroll();
-    });
+    // 連續滾動監聽：以 requestAnimationFrame 與 passive: true 節流處理，避免高頻阻斷合成器執行緒與 CPU 功耗飆升
+    this.contentBox?.addEventListener(
+      'scroll',
+      () => {
+        if (!this.isScrollTicking) {
+          window.requestAnimationFrame(() => {
+            this.handleContinuousScroll();
+            this.isScrollTicking = false;
+          });
+          this.isScrollTicking = true;
+        }
+      },
+      { passive: true }
+    );
 
     // 視窗離開或重新整理前立即保存進度
     window.addEventListener('beforeunload', () => {
@@ -327,6 +343,11 @@ class ReaderViewController {
       await saveSetting('reader_opencc', this.openccEnabled);
       openccBtn.classList.toggle('active', this.openccEnabled);
       this.renderAllRenderedChapters();
+      this.drawerNeedsRender = true;
+      if (this.drawerMask?.classList.contains('show')) {
+        this.renderDrawer();
+        this.drawerNeedsRender = false;
+      }
       showToast(this.openccEnabled ? '已切換為：繁體模式' : '已切換為：原始文字');
     });
 
@@ -370,9 +391,23 @@ class ReaderViewController {
     document.getElementById('drawer-search-input')?.addEventListener('input', (e) => {
       this.filterDrawerList(e.target.value.trim());
     });
+
+    // 目錄項目點擊事件委派 (Event Delegation，免去為數千項目各自註冊監聽器節省記憶體與 CPU)
+    this.drawerList?.addEventListener('click', (e) => {
+      const item = e.target.closest('.drawer-item');
+      if (item) {
+        const idx = parseInt(item.dataset.idx, 10);
+        this.closeDrawer();
+        this.changeChapter(idx);
+      }
+    });
   }
 
+  /**
+   * 啟動閱讀器狀態列時鐘 (僅在閱讀中啟用，定時 30 秒)
+   */
   startClock() {
+    this.stopClock();
     const updateTime = () => {
       const now = new Date();
       const hours = String(now.getHours()).padStart(2, '0');
@@ -380,7 +415,17 @@ class ReaderViewController {
       if (this.statusTimeEl) this.statusTimeEl.textContent = `${hours}:${mins}`;
     };
     updateTime();
-    setInterval(updateTime, 30000);
+    this.clockInterval = setInterval(updateTime, 30000);
+  }
+
+  /**
+   * 停止閱讀器狀態列時鐘 (退出閱讀或進入背景時呼叫以節省 CPU 喚醒能耗)
+   */
+  stopClock() {
+    if (this.clockInterval) {
+      clearInterval(this.clockInterval);
+      this.clockInterval = null;
+    }
   }
 
   applyTheme(themeName) {
@@ -851,10 +896,16 @@ class ReaderViewController {
     }
 
     await this.loadChapter(this.currentChapterIndex, startParagraphIndex);
-    this.renderDrawer();
+
+    // 啟動閱讀器時鐘
+    this.startClock();
+
+    // 標記目錄需要重新渲染 (延遲到使用者實際點擊目錄按鈕時才執行，大幅減少開書時的 CPU 密集運算)
+    this.drawerNeedsRender = true;
   }
 
   closeReader() {
+    this.stopClock();
     this.persistReadingProgress();
     this.cancelDownload();
     this.closeDownloadModal();
@@ -1094,6 +1145,9 @@ class ReaderViewController {
 
       // 背景預加載下一章
       this.prefetchNextChapter(nextIndex + 1);
+
+      // 滑動視窗回收：確保 DOM 節點總量受控
+      this.pruneOldChaptersIfNeeded();
     } else {
       // 載入失敗時提示並提供重試按鈕
       const retryEl = document.createElement('div');
@@ -1156,9 +1210,43 @@ class ReaderViewController {
       // 自動補償 scrollTop，讓使用者的視覺視野紋絲不動！
       const deltaHeight = this.contentBox.scrollHeight - prevScrollHeight;
       this.contentBox.scrollTop = prevScrollTop + deltaHeight;
+
+      // 滑動視窗回收：確保 DOM 節點總量受控
+      this.pruneOldChaptersIfNeeded();
     }
 
     this.isLoadingPrev = false;
+  }
+
+  /**
+   * DOM 滑動視窗回收：當渲染章節總數過多時，回收遠離視野的離屏章節節點
+   */
+  pruneOldChaptersIfNeeded() {
+    if (!this.contentBox || this.renderedChapters.size <= 8) return;
+
+    // 情況 1：向下滾動過遠，上方累積超過 4 章時，回收頂部舊章節
+    if (this.currentChapterIndex - this.lowestRenderedIndex > 4) {
+      const oldestIdx = this.lowestRenderedIndex;
+      const oldestBlock = this.contentBox.querySelector(`.reader-chapter-block[data-chapter-index="${oldestIdx}"]`);
+      if (oldestBlock) {
+        const h = oldestBlock.offsetHeight;
+        oldestBlock.remove();
+        this.contentBox.scrollTop = Math.max(0, this.contentBox.scrollTop - h);
+      }
+      this.renderedChapters.delete(oldestIdx);
+      this.lowestRenderedIndex = oldestIdx + 1;
+    }
+
+    // 情況 2：向上滾動過遠，下方累積超過 4 章時，回收底部舊章節
+    if (this.highestRenderedIndex - this.currentChapterIndex > 4 && this.renderedChapters.size > 8) {
+      const newestIdx = this.highestRenderedIndex;
+      const newestBlock = this.contentBox.querySelector(`.reader-chapter-block[data-chapter-index="${newestIdx}"]`);
+      if (newestBlock) {
+        newestBlock.remove();
+      }
+      this.renderedChapters.delete(newestIdx);
+      this.highestRenderedIndex = newestIdx - 1;
+    }
   }
 
   /**
@@ -1178,8 +1266,17 @@ class ReaderViewController {
       this.appendNextChapter();
     }
 
-    // 3. 判定目前視野頂部所在章節與段落
-    this.detectCurrentReadingPosition();
+    // 3. 判定目前視野頂部所在章節與段落 (節流 150ms + 滾動停止防抖保底，消除高頻強制排版計算)
+    const now = Date.now();
+    if (!this.lastPositionDetectTime || now - this.lastPositionDetectTime > 150) {
+      this.lastPositionDetectTime = now;
+      this.detectCurrentReadingPosition();
+    }
+
+    clearTimeout(this.scrollEndTimer);
+    this.scrollEndTimer = setTimeout(() => {
+      this.detectCurrentReadingPosition();
+    }, 150);
   }
 
   /**
@@ -1351,8 +1448,14 @@ class ReaderViewController {
 
   // ----------------- 目錄抽屜 (TOC Drawer) -----------------
 
-  openDrawer() {
+  async openDrawer() {
     this.hideMenu();
+
+    // 延遲渲染：若目錄尚未渲染或偏好設定變更，在使用者打開抽屜時才建構 (大幅減少非必要之 CPU 繁簡轉換與 DOM 生成)
+    if (this.drawerNeedsRender) {
+      await this.renderDrawer();
+      this.drawerNeedsRender = false;
+    }
 
     // 1. 若有搜尋關鍵字殘留，開啟時重設以完整顯示全部章節
     const searchInput = document.getElementById('drawer-search-input');
@@ -1414,14 +1517,6 @@ class ReaderViewController {
       `
       )
       .join('');
-
-    this.drawerList.querySelectorAll('.drawer-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const idx = parseInt(item.dataset.idx, 10);
-        this.closeDrawer();
-        this.changeChapter(idx);
-      });
-    });
   }
 
   updateDrawerActiveItem(targetIndex = this.currentChapterIndex) {
@@ -2125,8 +2220,12 @@ class ReaderViewController {
       if (this.currentBook && this.wakeLockEnabled) {
         await this.requestWakeLock();
       }
+      if (this.currentBook) {
+        this.startClock();
+      }
     } else {
-      // 頁面進入背景時，瀏覽器會自動釋放，我們同步清理 reference
+      // 頁面進入背景時，停止時鐘以節省電量，瀏覽器會自動釋放 wakeLock，我們同步清理 reference
+      this.stopClock();
       if (this.wakeLockSentinel) {
         this.wakeLockSentinel = null;
         this.updateWakeLockUI();

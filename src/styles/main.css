@@ -495,9 +495,11 @@ body {
   font-weight: inherit;
 }
 
-/* 連續滾動章節區塊 */
+/* 連續滾動章節區塊 (啟用 content-visibility 略過離屏排版計算，大幅節省滾動功耗) */
 .reader-chapter-block {
   margin-bottom: 24px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1200px;
 }
 
 /* 章節銜接分隔線 */
@@ -1101,6 +1103,8 @@ body {
   justify-content: space-between;
   align-items: center;
   transition: background-color 0.15s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
 }
 
 .drawer-item:hover {
