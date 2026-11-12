@@ -251,6 +251,19 @@ export async function getChapter(bookId, index) {
   });
 }
 
+/**
+ * 刪除指定書籍的單一章節快取
+ */
+export async function deleteChapter(bookId, index) {
+  const id = `${bookId}_${index}`;
+  const store = await getStore('chapters', 'readwrite');
+  return new Promise((resolve, reject) => {
+    const request = store.delete(id);
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export async function saveChapter(chapter) {
   if (!chapter.id) {
     chapter.id = `${chapter.bookId}_${chapter.index}`;

@@ -3,7 +3,7 @@
  * 沉浸式排版、觸控翻頁、字體與主題調整、章節預加載、繁簡轉換與 TTS 整合
  */
 
-import { getBook, saveBook, getChapter, saveChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices, getBookCacheDetails, formatBytes, compressBookCachedChapters } from '../db/index.js';
+import { getBook, saveBook, getChapter, saveChapter, deleteChapter, getAllSources, getSetting, saveSetting, getCachedChapterIndices, getBookCacheDetails, formatBytes, compressBookCachedChapters } from '../db/index.js';
 import { getChapterContent } from '../services/sourceEngine.js';
 import { convertToTraditional } from '../services/opencc.js';
 import { tts } from '../services/tts.js';
@@ -360,6 +360,11 @@ class ReaderViewController {
       this.toggleWakeLock();
     });
 
+    // 頂部沉浸工具列：重新下載 / 更新當前章節按鈕
+    document.getElementById('reader-btn-refresh-chapter')?.addEventListener('click', () => {
+      this.redownloadChapter(this.currentChapterIndex, true);
+    });
+
     // 主題選擇按鈕
     document.querySelectorAll('.theme-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
@@ -395,6 +400,14 @@ class ReaderViewController {
 
     // 目錄項目點擊事件委派 (Event Delegation，免去為數千項目各自註冊監聽器節省記憶體與 CPU)
     this.drawerList?.addEventListener('click', (e) => {
+      const redownloadBtn = e.target.closest('.drawer-redownload-btn');
+      if (redownloadBtn) {
+        e.stopPropagation();
+        const idx = parseInt(redownloadBtn.dataset.idx, 10);
+        this.redownloadChapter(idx, false, redownloadBtn);
+        return;
+      }
+
       const item = e.target.closest('.drawer-item');
       if (item) {
         const idx = parseInt(item.dataset.idx, 10);
@@ -885,6 +898,12 @@ class ReaderViewController {
     this.applyTheme(this.theme);
     this.hideMenu();
 
+    // 根據是否為線上書源切換頂部重新下載按鈕
+    const refreshBtn = document.getElementById('reader-btn-refresh-chapter');
+    if (refreshBtn) {
+      refreshBtn.style.display = book.sourceId === 'local' ? 'none' : 'inline-block';
+    }
+
     // 啟動螢幕常亮 (若使用者偏好設定為開啟)
     if (this.wakeLockEnabled) {
       this.requestWakeLock();
@@ -1064,6 +1083,123 @@ class ReaderViewController {
       }
     }
     return chapterData;
+  }
+
+  /**
+   * 重新下載單一章節（強制向線上書源發起網路請求並覆蓋本地快取）
+   * @param {number} index 章節索引
+   * @param {boolean} isFromTopBar 是否由頂部沉浸選單發起
+   * @param {HTMLElement} [buttonEl] 觸發的按鈕元素（用於動態添加轉圈動畫）
+   */
+  async redownloadChapter(index, isFromTopBar = false, buttonEl = null) {
+    if (!this.currentBook || !this.currentBook.chapters) return;
+
+    if (this.currentBook.sourceId === 'local') {
+      showToast('本地匯入書籍無須線上重新下載');
+      return;
+    }
+
+    const chapMeta = this.currentBook.chapters[index];
+    if (!chapMeta || !chapMeta.url) {
+      showToast('該章節無有效網址，無法重新下載');
+      return;
+    }
+
+    // 防重複點擊或與批次下載衝突
+    if (this.isDownloading) {
+      showToast('批次下載進行中，請稍候重試');
+      return;
+    }
+
+    // 取得書源設定
+    let source = this.sourcesMap.get(this.currentBook.sourceId);
+    if (!source) {
+      const sources = await getAllSources();
+      source = sources.find((s) => s.id === this.currentBook.sourceId);
+    }
+
+    if (!source) {
+      showToast('找不到對應書源，無法線上重新下載');
+      return;
+    }
+
+    // 動態旋轉按鈕指示狀態
+    const targetBtns = [];
+    if (buttonEl) targetBtns.push(buttonEl);
+    if (isFromTopBar) {
+      const topBtn = document.getElementById('reader-btn-refresh-chapter');
+      if (topBtn) targetBtns.push(topBtn);
+    }
+    // 同步抽屜中的按鈕（若已渲染）
+    if (this.drawerList) {
+      const drawerBtn = this.drawerList.querySelector(`.drawer-redownload-btn[data-idx="${index}"]`);
+      if (drawerBtn && !targetBtns.includes(drawerBtn)) targetBtns.push(drawerBtn);
+    }
+
+    targetBtns.forEach((btn) => btn.classList.add('spinning'));
+    const chapTitle = convertToTraditional(chapMeta.title || `第 ${index + 1} 章`, this.openccEnabled);
+    showToast(`正在重新下載：${chapTitle}...`);
+
+    try {
+      // 1. 清除舊快取
+      await deleteChapter(this.currentBook.id, index);
+
+      // 2. 向線上書源發起最新網路請求
+      const content = await getChapterContent(chapMeta.url, source, { timeout: 15000 });
+
+      if (!content || !content.trim()) {
+        throw new Error('線上內文為空');
+      }
+
+      // 3. 儲存新快取至本地 IndexedDB
+      const newChapterData = {
+        bookId: this.currentBook.id,
+        index,
+        title: chapMeta.title,
+        url: chapMeta.url,
+        content
+      };
+      await saveChapter(newChapterData);
+
+      // 4. 更新內部章節對照快取
+      this.renderedChapters.set(index, newChapterData);
+      if (this.currentChapterIndex === index) {
+        this.currentChapter = newChapterData;
+      }
+
+      // 5. 若畫面上有此章節的區塊（連續滾動或單頁），直接無縫替換其 DOM 內容，不需刷新重開！
+      const chapterBlock = this.contentBox?.querySelector(`.reader-chapter-block[data-chapter-index="${index}"]`);
+      if (chapterBlock) {
+        const bodyEl = chapterBlock.querySelector('.reader-chapter-body');
+        if (bodyEl) {
+          const contentText = convertToTraditional(newChapterData.content, this.openccEnabled);
+          const paragraphs = contentText
+            .replace(/\r\n/g, '\n')
+            .split(/\n+/)
+            .map((p) => p.trim())
+            .filter((p) => p.length > 0);
+          bodyEl.innerHTML = paragraphs
+            .map((p, pIdx) => `<p class="reader-paragraph" data-idx="${pIdx}">${p}</p>`)
+            .join('');
+        }
+      } else if (this.currentChapterIndex === index) {
+        // 若當前章節未分塊，保留捲動位置並重新渲染內文
+        const currentScrollTop = this.contentBox?.scrollTop || 0;
+        this.contentBox.innerHTML = this.buildChapterHTML(newChapterData, true);
+        if (this.contentBox) this.contentBox.scrollTop = currentScrollTop;
+      }
+
+      // 6. 同步抽屜已快取圖示狀態與儲存空間統計
+      this.updateDrawerCachedIcons();
+      this.updateCacheStats().catch(() => {});
+
+      showToast(`《${chapTitle}》重新下載成功！`);
+    } catch (err) {
+      console.error('[Reader] 單章重新下載失敗:', err);
+      showToast(`重新下載失敗: ${err.message || '網路連線逾時'}`);
+    } finally {
+      targetBtns.forEach((btn) => btn.classList.remove('spinning'));
+    }
   }
 
   /**
@@ -1471,6 +1607,8 @@ class ReaderViewController {
       </span>
     `;
 
+    const isOnlineBook = this.currentBook.sourceId !== 'local';
+
     this.drawerList.innerHTML = chapters
       .map(
         (chap, idx) => `
@@ -1480,6 +1618,15 @@ class ReaderViewController {
           </div>
           <div class="drawer-item-meta">
             ${cachedSet.has(idx) ? downloadSvg : ''}
+            ${
+              isOnlineBook
+                ? `<button class="drawer-redownload-btn" data-idx="${idx}" title="重新下載此章 (覆蓋快取)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                    </svg>
+                  </button>`
+                : ''
+            }
             <span class="drawer-item-num">#${idx + 1}</span>
           </div>
         </div>

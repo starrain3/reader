@@ -1148,6 +1148,35 @@ body {
   padding: 2px 4px;
 }
 
+.drawer-redownload-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+  line-height: 1;
+}
+
+.drawer-redownload-btn:hover {
+  color: var(--primary-color);
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.drawer-redownload-btn:active {
+  transform: scale(0.9);
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite !important;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 .drawer-item.active {
   color: var(--primary-color);
   font-weight: 700;
